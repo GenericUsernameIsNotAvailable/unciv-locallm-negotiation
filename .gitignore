@@ -118,14 +118,10 @@ gradle-app.setting
 Thumbs.db
 
 ## iOS
-/.env.app-store.local
-/AuthKey_*.p8
 /ios/xcode/*.xcodeproj/*
 !/ios/xcode/*.xcodeproj/xcshareddata
 !/ios/xcode/*.xcodeproj/project.pbxproj
 /ios/xcode/native/
-/fastlane/README.md
-/fastlane/report.xml
 
 /ios-moe/xcode/*.xcodeproj/*
 !/ios-moe/xcode/*.xcodeproj/xcshareddata
@@ -147,7 +143,7 @@ android/assets/GameSettings.json
 android/assets/FasterUIDevSettings.json
 android/assets/ModListCache.json
 android/assets/lasterror.txt
-android/assets//fonts/
+android/assets/fonts/
 android/assets/maps/
 android/assets/mods/
 android/assets/MultiplayerGames/
@@ -159,7 +155,7 @@ android/assets/scenarios/
 lasterror.txt
 GameSettings.json
 ModListCache.json
-/fonts/
+fonts/
 maps/
 mods/
 MultiplayerGames/
@@ -193,12 +189,6 @@ detekt/reports.html
 /buildSrc/.kotlin/errors/*
 /buildSrc/.kotlin/sessions/*
 /.claude/
-/.workbuddy/
-/docs/Developers/
-
-# Local iOS simulator notes
-/ios/IOS_SIMULATOR_BUGS.md
-
 
 # Used by the desktop:packr<platform> tasks and intentionally not included in a 'clean':
 /desktop/.jre-cache/
@@ -207,3 +197,11 @@ detekt/reports.html
 /.github/workflows/unciv.wixpdb
 /.github/workflows/wix-msi-files/
 /desktop/packr/*
+
+# Local LLM weights, binaries, and probe outputs
+llm-models/
+android/assets/llm-models/
+llm-probe*.txt
+android/assets/llm-probe*.txt
+*.gguf
+*.gguf.part
