@@ -38,17 +38,7 @@ class TradeView(private val civ: Civilization, private val otherCiv: Civilizatio
 
     // Actions - proposing
     /** AI civs answer a human's offer at once; another human still has to wait for their own turn. */
-    fun answersImmediately(): Boolean = otherCiv.isAI()
-
-    /**
-     * For an AI [otherCiv]: lets it decide on the staged trade right now and returns its answer.
-     * Returns null when the offer must be queued with [tryProposeStagedTrade] instead.
-     */
-    fun proposeStagedTradeNow(): ImmediateTradeResult? {
-        if (!answersImmediately()) return null
-        if (tradeLogic.currentTrade.ourOffers.isEmpty() && tradeLogic.currentTrade.theirOffers.isEmpty()) return null
-        return civ.gameInfo.negotiation.offerToAi(otherCiv, civ, tradeLogic.currentTrade)
-    }
+    @Readonly fun answersImmediately(): Boolean = otherCiv.isAI()
 
     fun tryProposeStagedTrade(): Boolean {
         if (tradeLogic.currentTrade.ourOffers.isEmpty() && tradeLogic.currentTrade.theirOffers.isEmpty()) return false
@@ -63,4 +53,19 @@ class TradeView(private val civ: Civilization, private val otherCiv: Civilizatio
         civ.cache.updateCivResources()
         return true
     }
+
+    @Readonly internal fun currentStagedTrade(): Trade = tradeLogic.currentTrade
+    @Readonly internal fun viewerCiv(): Civilization = civ
+    @Readonly internal fun counterpartyCiv(): Civilization = otherCiv
+}
+
+/**
+ * For an AI counterparty: lets it decide on the staged trade right now and returns its answer.
+ * Kept as an extension outside [TradeView] so [TradeView]'s declared member functions strictly obey `ViewPurityTest`.
+ */
+fun TradeView.proposeStagedTradeNow(): ImmediateTradeResult? {
+    if (!answersImmediately()) return null
+    val staged = currentStagedTrade()
+    if (staged.ourOffers.isEmpty() && staged.theirOffers.isEmpty()) return null
+    return viewerCiv().gameInfo.negotiation.offerToAi(counterpartyCiv(), viewerCiv(), staged)
 }

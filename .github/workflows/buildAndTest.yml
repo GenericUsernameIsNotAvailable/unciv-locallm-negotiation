@@ -33,6 +33,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Compile kotlin and build classes
         run: ./gradlew classes
 
