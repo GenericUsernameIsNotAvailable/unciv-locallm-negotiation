@@ -10,7 +10,6 @@ import com.unciv.ui.components.input.onClick
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.view.CivView
 import com.unciv.view.ForeignCivView
-import com.unciv.view.proposeStagedTradeNow
 import com.unciv.logic.negotiation.ImmediateTradeResult
 import com.unciv.ui.popups.ToastPopup
 

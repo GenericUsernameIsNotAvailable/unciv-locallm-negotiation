@@ -1,0 +1,11 @@
+name: Docker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  skip-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Info
+        run: echo "Docker publishing is disabled on this fork."
