@@ -1,5 +1,4 @@
-# Jobs to test the code base and build the Android APK, Desktop JAR, and Server JAR
-name: Build Multiplatform
+﻿name: Build Multiplatform
 
 on:
   workflow_dispatch:
@@ -35,6 +34,34 @@ jobs:
         with:
           packages: 'platform-tools'
 
+      - name: Build On-Device Native LLM Engine (libunciv_llama.so for arm64-v8a)
+        run: |
+          if [ -n "$ANDROID_NDK_LATEST_HOME" ]; then
+            NDK_DIR="$ANDROID_NDK_LATEST_HOME"
+          elif [ -n "$ANDROID_NDK_HOME" ]; then
+            NDK_DIR="$ANDROID_NDK_HOME"
+          else
+            NDK_DIR=$(ls -d $ANDROID_HOME/ndk/* | tail -n 1)
+          fi
+          echo "Using Android NDK: $NDK_DIR"
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
+          cmake -S core/native -B /tmp/build-android-arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_DIR/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLAMA_CPP_DIR=/tmp/llama.cpp \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLLAMA_CURL=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_SERVER=OFF \
+            -DGGML_OPENMP=OFF
+          cmake --build /tmp/build-android-arm64 --target unciv_llama -j 4
+          mkdir -p android/libs/arm64-v8a
+          cp /tmp/build-android-arm64/libunciv_llama.so android/libs/arm64-v8a/libunciv_llama.so
+          ls -lh android/libs/arm64-v8a/libunciv_llama.so
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
@@ -42,7 +69,7 @@ jobs:
         run: |
           chmod +x gradlew
           mkdir -p whatsNewDirectory
-          echo "Unciv Local-LLM Diplomatic Negotiation Build" > whatsNewDirectory/whatsnew-en-US
+          echo "Unciv-LLM Local Diplomatic Negotiation Build" > whatsNewDirectory/whatsnew-en-US
           set -x
           ./gradlew :android:assembleDebug
           ./gradlew :android:assembleRelease
@@ -51,7 +78,7 @@ jobs:
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Android-APK-and-AAB
+          name: Unciv-LLM-Android-APK
           path: |
             android/build/outputs/apk/*/*.apk
             android/build/outputs/bundle/*/*.aab
@@ -104,7 +131,7 @@ jobs:
       - name: Upload Desktop artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Desktop-JAR
+          name: Unciv-LLM-Desktop-JAR
           path: desktop/build/libs/*.jar
           retention-days: 30
         if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -113,7 +140,7 @@ jobs:
       - name: Upload Java server artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Server-JAR
+          name: Unciv-LLM-Server-JAR
           path: server/build/libs/*.jar
           retention-days: 30
         if: ${{ matrix.os == 'ubuntu-latest' }}

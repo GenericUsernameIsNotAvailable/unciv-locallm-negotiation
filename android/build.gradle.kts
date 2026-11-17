@@ -1,4 +1,4 @@
-
+﻿
 import com.unciv.build.AndroidImagePacker
 import com.unciv.build.BuildConfig
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -28,13 +28,13 @@ android {
     }
     defaultConfig {
         namespace = BuildConfig.identifier
-        applicationId = BuildConfig.identifier
+        applicationId = BuildConfig.applicationId
         minSdk = 21
         targetSdk = 36
         versionCode = BuildConfig.appCodeNumber
         versionName = BuildConfig.appVersion
 
-        base.archivesName.set("Unciv")
+        base.archivesName.set(BuildConfig.appName)
     }
 
     // Had to add this crap for Travis to build, it wanted to sign the app
@@ -153,3 +153,4 @@ dependencies {
     //   or by running `./gradlew :android:assembleRelease` which does that
     coreLibraryDesugaring(libs.android.desugar)
 }
+

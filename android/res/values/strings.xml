@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
         Known Lint warning: MissingTranslation. Yes, _fr_ is incomplete. Suppressed in android/build.gradle.kts
     -->
-    <string name="app_name">Unciv</string>
+    <string name="app_name">Unciv-LLM</string>
     <string name="Notify_YourTurn_Short">Unciv - It\'s your turn!</string>
     <string name="Notify_YourTurn_Long">Your friends are waiting for your turn in [gameName].</string>
     <string name="Notify_Error_Short">An error has occurred</string>
@@ -19,5 +19,6 @@
     <string name="Notify_ChannelService_Long">Shown constantly to inform you about background checking.</string>
     <string name="Notify_Error_StackTrace_Toast">Stacktraces copied to clipboard.</string>
     <string name="Notify_Error_CopyAction">Copy stacktrace to clipboard</string>
-    <string name="Notify_Error_Retrying">failed, retrying…</string>
+    <string name="Notify_Error_Retrying">failed, retryingâ€¦</string>
 </resources>
+

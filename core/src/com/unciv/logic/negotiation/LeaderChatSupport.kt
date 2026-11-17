@@ -1,4 +1,4 @@
-package com.unciv.logic.negotiation
+﻿package com.unciv.logic.negotiation
 
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.diplomacy.DiplomacyManager
@@ -112,7 +112,21 @@ object PlatformLlm {
     @Volatile var nativeBridge: NativeLlmBridge? = if (JniLlamaCppBridge.isNativeLibraryAvailable) JniLlamaCppBridge else null
 
     /** Directory where on-device `.gguf` models are stored; defaults to `llm-models` inside the working directory. */
-    @Volatile var modelsDirectory: File = File("llm-models")
+    @Volatile var modelsDirectory: File? = null
+
+    fun resolveModelsDirectory(): File {
+        modelsDirectory?.let { dir -> if (dir.exists() || dir.mkdirs()) return dir }
+        try {
+            val gdxFiles = com.badlogic.gdx.Gdx.files
+            if (gdxFiles != null && gdxFiles.localStoragePath != null) {
+                val dir = gdxFiles.local("llm-models").file()
+                if (dir.exists() || dir.mkdirs()) return dir
+            }
+        } catch (_: Throwable) {}
+        val localDir = File("llm-models")
+        if (localDir.exists() || localDir.mkdirs()) return localDir
+        return File(System.getProperty("java.io.tmpdir", "."), "unciv-llm-models").apply { mkdirs() }
+    }
 }
 
 internal object LlmSettings {
@@ -137,7 +151,7 @@ internal object LlmSettings {
     /** When true and a [PlatformLlm.nativeBridge] is available (or forced for testing), uses [OnDeviceLlmBackend]. */
     @Volatile var preferOnDevice: Boolean = true
 
-    val modelManager = OnDeviceModelManager { PlatformLlm.modelsDirectory }
+    val modelManager = OnDeviceModelManager { PlatformLlm.resolveModelsDirectory() }
 
     val onDeviceBackend = OnDeviceLlmBackend(
         bridgeProvider = { PlatformLlm.nativeBridge },
@@ -175,9 +189,9 @@ internal object LlmSettings {
             BackgroundLlmRunner.managedStatusLabel != null ->
                 BackgroundLlmRunner.managedStatusLabel!!
             downloaded ->
-                "Local GGUF (${spec.id} — auto-starts in background)"
+                "Local GGUF (${spec.id} â€” auto-starts in background)"
             else ->
-                "Local Model (${current().model} — auto-managed in background)"
+                "Local Model (${current().model} â€” auto-managed in background)"
         }
     }
 
@@ -299,3 +313,4 @@ internal object ChatStore {
         return encoded
     }
 }
+

@@ -1,4 +1,4 @@
-package com.unciv.app.desktop
+﻿package com.unciv.app.desktop
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.files.FileHandle
@@ -113,7 +113,7 @@ internal object DesktopLauncher {
         val config = Lwjgl3ApplicationConfiguration()
         config.setWindowIcon("ExtraImages/Icons/Unciv32.png", "ExtraImages/Icons/Unciv128.png")
         if (SharedLibraryLoader.os == Os.MacOsX) updateDockIconForMacOs("ExtraImages/Icons/Unciv128.png")
-        config.setTitle("Unciv")
+        config.setTitle("Unciv-LLM")
         config.setHdpiMode(HdpiMode.Logical)
         config.setWindowSizeLimits(WindowState.minimumWidth, WindowState.minimumHeight, -1, -1)
 
@@ -159,3 +159,4 @@ internal object DesktopLauncher {
         } catch (_: Throwable) { }
     }
 }
+

@@ -1,4 +1,4 @@
-package com.unciv.logic.commitments.llm
+﻿package com.unciv.logic.commitments.llm
 
 import java.io.File
 import java.io.FileOutputStream
@@ -9,7 +9,7 @@ import java.util.Locale
 import java.util.zip.ZipInputStream
 
 /**
- * Specification for a quantized local neural language model sized for phones and desktops (1.0–2.7 GB).
+ * Specification for a quantized local neural language model sized for phones and desktops (1.0â€“2.7 GB).
  * Models can be downloaded on demand into the app's local `llm-models/` directory or run via a background runtime.
  */
 data class MobileModelSpec(
@@ -25,7 +25,7 @@ data class MobileModelSpec(
         val CATALOG: List<MobileModelSpec> = listOf(
             MobileModelSpec(
                 id = "gemma4-e2b-q4",
-                displayName = "Gemma 4 E2B Instruct (Q4_K_M, ~1.5 GB — Recommended for S25 / iPhone 16e / Desktop)",
+                displayName = "Gemma 4 E2B Instruct (Q4_K_M, ~1.5 GB â€” Recommended for S25 / iPhone 16e / Desktop)",
                 fileName = "gemma-4-e2b-it-Q4_K_M.gguf",
                 approxSizeMb = 1520,
                 recommendedRamGb = 8,
@@ -34,7 +34,7 @@ data class MobileModelSpec(
             ),
             MobileModelSpec(
                 id = "qwen2.5-1.5b-q4",
-                displayName = "Qwen 2.5 1.5B Instruct (Q4_K_M, ~1.0 GB — Ultra-light mobile / fast CPU)",
+                displayName = "Qwen 2.5 1.5B Instruct (Q4_K_M, ~1.0 GB â€” Ultra-light mobile / fast CPU)",
                 fileName = "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                 approxSizeMb = 990,
                 recommendedRamGb = 6,
@@ -43,11 +43,11 @@ data class MobileModelSpec(
             ),
             MobileModelSpec(
                 id = "gemma4-e4b-q4",
-                displayName = "Gemma 4 E4B Instruct (Q4_K_M, ~2.7 GB — 12 GB+ RAM devices / Desktop)",
+                displayName = "Gemma 4 E4B Instruct (Q4_K_M, ~2.7 GB â€” 12 GB+ RAM devices / Desktop)",
                 fileName = "gemma-4-e4b-it-Q4_K_M.gguf",
                 approxSizeMb = 2750,
                 recommendedRamGb = 12,
-                downloadUrl = "https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf",
+                downloadUrl = "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
                 ollamaTag = "gemma4:e4b"
             )
         )
@@ -128,8 +128,10 @@ class OnDeviceModelManager(private val modelsDirProvider: () -> File) {
             // Non-fatal if offline or on a mobile OS where JNI is used instead
         }
 
-        val target = modelFile(spec)
-        val part = File(modelsDir(), "${spec.fileName}.part")
+        val dir = modelsDir().apply { mkdirs() }
+        val target = File(dir, spec.fileName)
+        val part = File(dir, "${spec.fileName}.part")
+        part.parentFile?.mkdirs()
         val connection = try {
             URI(spec.downloadUrl).toURL().openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -303,7 +305,7 @@ object BackgroundLlmRunner {
         if (llamaBin != null && modelManager.isDownloaded(spec)) {
             if (isEndpointAlive(STANDALONE_GGUF_URL)) {
                 activeManagedUrl = STANDALONE_GGUF_URL
-                activeManagedLabel = "Local GGUF (${spec.fileName} — running in background)"
+                activeManagedLabel = "Local GGUF (${spec.fileName} â€” running in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return STANDALONE_GGUF_URL
             }
@@ -318,7 +320,7 @@ object BackgroundLlmRunner {
             )
             if (spawnAndAwait(cmd, llamaBin.parentFile, STANDALONE_GGUF_URL, maxWaitMs = 25_000L)) {
                 activeManagedUrl = STANDALONE_GGUF_URL
-                activeManagedLabel = "Local GGUF (${spec.fileName} — auto-started in background)"
+                activeManagedLabel = "Local GGUF (${spec.fileName} â€” auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return STANDALONE_GGUF_URL
             }
@@ -328,7 +330,7 @@ object BackgroundLlmRunner {
         if (isEndpointAlive(configuredBaseUrl)) {
             lastVerifiedAliveMs = System.currentTimeMillis()
             if (activeManagedLabel == null) {
-                activeManagedLabel = "Local Model (${spec.ollamaTag} — active)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” active)"
             }
             return configuredBaseUrl
         }
@@ -339,7 +341,7 @@ object BackgroundLlmRunner {
             val cmd = listOf(ollamaBin.absolutePath, "serve")
             if (spawnAndAwait(cmd, ollamaBin.parentFile, configuredBaseUrl, maxWaitMs = 20_000L)) {
                 activeManagedUrl = configuredBaseUrl
-                activeManagedLabel = "Local Model (${spec.ollamaTag} — auto-started in background)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return configuredBaseUrl
             }
@@ -347,7 +349,7 @@ object BackgroundLlmRunner {
             val cmd = listOf("ollama", "serve")
             if (spawnAndAwait(cmd, null, configuredBaseUrl, maxWaitMs = 2_000L)) {
                 activeManagedUrl = configuredBaseUrl
-                activeManagedLabel = "Local Model (${spec.ollamaTag} — auto-started in background)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return configuredBaseUrl
             }
@@ -639,3 +641,4 @@ object JniLlamaCppBridge : NativeLlmBridge {
     @JvmStatic private external fun nativeFreeModel(handle: Long)
     @JvmStatic private external fun nativeGenerate(handle: Long, prompt: String, maxTokens: Int, temperature: Float): String
 }
+
