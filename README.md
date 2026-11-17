@@ -4,10 +4,8 @@ Original Unciv: https://github.com/yairm210/unciv
 # Unciv-LLM (An Unofficial fork of Unciv) 
 <img width="2340" height="1080" alt="Screenshot_20261117_100918_Unciv-LLM" src="https://github.com/user-attachments/assets/d381fe2f-0004-427d-a890-fa09b2bfb34a" />
 <img width="2340" height="1080" alt="Screenshot_20261117_095655_Unciv-LLM" src="https://github.com/user-attachments/assets/f2d174c8-03c5-4710-a5ec-ad78132a1360" />
-<img width="1757" height="1080" alt="Screenshot_20261117_100219_Unciv-LLM" src="https://github.com/user-attachments/assets/603b0c32-5766-48e9-a15e-a53c2bc2a183" />
-<img width="1789" height="1080" alt="Screenshot_20261117_100442_Unciv-LLM" src="https://github.com/user-attachments/assets/01ea4166-4f43-40c1-9c40-834bf80dff9c" />
-
-
+<img width="1757" height="1080" alt="Screenshot_20261117_100219_Unciv-LLM" src="https://github.com/user-attachments/assets/ffd2100f-f3dc-4c82-9aa8-f8a0f6c6aecb" />
+<img width="1789" height="1080" alt="Screenshot_20261117_100442_Unciv-LLM" src="https://github.com/user-attachments/assets/ee94e9db-70ab-46d9-836b-21f6338e14b7" />
 
 ## What is this?
 An unofficial pet-project to include small local language model capability into diplomacy within the Unciv game.
