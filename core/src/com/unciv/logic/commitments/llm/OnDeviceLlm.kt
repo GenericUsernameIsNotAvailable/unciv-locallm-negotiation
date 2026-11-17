@@ -1,4 +1,4 @@
-﻿package com.unciv.logic.commitments.llm
+package com.unciv.logic.commitments.llm
 
 import java.io.File
 import java.io.FileOutputStream
@@ -9,7 +9,7 @@ import java.util.Locale
 import java.util.zip.ZipInputStream
 
 /**
- * Specification for a quantized local neural language model sized for phones and desktops (1.0â€“2.7 GB).
+ * Specification for a quantized local neural language model sized for phones and desktops (1.0–2.7 GB).
  * Models can be downloaded on demand into the app's local `llm-models/` directory or run via a background runtime.
  */
 data class MobileModelSpec(
@@ -25,7 +25,7 @@ data class MobileModelSpec(
         val CATALOG: List<MobileModelSpec> = listOf(
             MobileModelSpec(
                 id = "gemma4-e2b-q4",
-                displayName = "Gemma 4 E2B Instruct (Q4_K_M, ~1.5 GB â€” Recommended for S25 / iPhone 16e / Desktop)",
+                displayName = "Gemma 4 E2B Instruct (Q4_K_M, ~1.5 GB — Recommended for S25 / iPhone 16e / Desktop)",
                 fileName = "gemma-4-e2b-it-Q4_K_M.gguf",
                 approxSizeMb = 1520,
                 recommendedRamGb = 8,
@@ -34,7 +34,7 @@ data class MobileModelSpec(
             ),
             MobileModelSpec(
                 id = "qwen2.5-1.5b-q4",
-                displayName = "Qwen 2.5 1.5B Instruct (Q4_K_M, ~1.0 GB â€” Ultra-light mobile / fast CPU)",
+                displayName = "Qwen 2.5 1.5B Instruct (Q4_K_M, ~1.0 GB — Ultra-light mobile / fast CPU)",
                 fileName = "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                 approxSizeMb = 990,
                 recommendedRamGb = 6,
@@ -43,7 +43,7 @@ data class MobileModelSpec(
             ),
             MobileModelSpec(
                 id = "gemma4-e4b-q4",
-                displayName = "Gemma 4 E4B Instruct (Q4_K_M, ~2.7 GB â€” 12 GB+ RAM devices / Desktop)",
+                displayName = "Gemma 4 E4B Instruct (Q4_K_M, ~2.7 GB — 12 GB+ RAM devices / Desktop)",
                 fileName = "gemma-4-e4b-it-Q4_K_M.gguf",
                 approxSizeMb = 2750,
                 recommendedRamGb = 12,
@@ -305,7 +305,7 @@ object BackgroundLlmRunner {
         if (llamaBin != null && modelManager.isDownloaded(spec)) {
             if (isEndpointAlive(STANDALONE_GGUF_URL)) {
                 activeManagedUrl = STANDALONE_GGUF_URL
-                activeManagedLabel = "Local GGUF (${spec.fileName} â€” running in background)"
+                activeManagedLabel = "Local GGUF (${spec.fileName} — running in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return STANDALONE_GGUF_URL
             }
@@ -320,7 +320,7 @@ object BackgroundLlmRunner {
             )
             if (spawnAndAwait(cmd, llamaBin.parentFile, STANDALONE_GGUF_URL, maxWaitMs = 25_000L)) {
                 activeManagedUrl = STANDALONE_GGUF_URL
-                activeManagedLabel = "Local GGUF (${spec.fileName} â€” auto-started in background)"
+                activeManagedLabel = "Local GGUF (${spec.fileName} — auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return STANDALONE_GGUF_URL
             }
@@ -330,7 +330,7 @@ object BackgroundLlmRunner {
         if (isEndpointAlive(configuredBaseUrl)) {
             lastVerifiedAliveMs = System.currentTimeMillis()
             if (activeManagedLabel == null) {
-                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” active)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} — active)"
             }
             return configuredBaseUrl
         }
@@ -341,7 +341,7 @@ object BackgroundLlmRunner {
             val cmd = listOf(ollamaBin.absolutePath, "serve")
             if (spawnAndAwait(cmd, ollamaBin.parentFile, configuredBaseUrl, maxWaitMs = 20_000L)) {
                 activeManagedUrl = configuredBaseUrl
-                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” auto-started in background)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} — auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return configuredBaseUrl
             }
@@ -349,7 +349,7 @@ object BackgroundLlmRunner {
             val cmd = listOf("ollama", "serve")
             if (spawnAndAwait(cmd, null, configuredBaseUrl, maxWaitMs = 2_000L)) {
                 activeManagedUrl = configuredBaseUrl
-                activeManagedLabel = "Local Model (${spec.ollamaTag} â€” auto-started in background)"
+                activeManagedLabel = "Local Model (${spec.ollamaTag} — auto-started in background)"
                 lastVerifiedAliveMs = System.currentTimeMillis()
                 return configuredBaseUrl
             }
@@ -550,6 +550,19 @@ class OnDeviceLlmBackend(
     override val isAvailable: Boolean
         get() = bridgeProvider() != null && modelManager.isDownloaded(selectedSpec())
 
+    /** Pre-loads the selected GGUF model into native RAM when ChatTable opens so the first reply has zero cold-start delay. */
+    fun warmUp() = synchronized(lock) {
+        val bridge = bridgeProvider() ?: return@synchronized
+        val spec = selectedSpec()
+        if (!modelManager.isDownloaded(spec)) return@synchronized
+        val path = modelManager.modelFile(spec).absolutePath
+        if (!bridge.isLoaded || loadedPath != path) {
+            if (bridge.isLoaded) bridge.unloadModel()
+            bridge.loadModel(path)
+            loadedPath = path
+        }
+    }
+
     override fun generate(request: LlmRequest): LlmResponse = synchronized(lock) {
         val bridge = bridgeProvider()
             ?: throw LlmException("No on-device native LLM runtime is registered on this platform.")
@@ -591,6 +604,9 @@ object JniLlamaCppBridge : NativeLlmBridge {
     @Volatile
     private var modelHandle: Long = 0L
 
+    @Volatile
+    private var activeModelPath: String = ""
+
     init {
         try {
             System.loadLibrary("unciv_llama")
@@ -609,6 +625,7 @@ object JniLlamaCppBridge : NativeLlmBridge {
     override fun loadModel(modelPath: String, contextSize: Int, gpuLayers: Int) {
         if (!libraryLinked) throw LlmException("Native on-device library 'unciv_llama' is not linked in this build.")
         if (modelHandle != 0L) unloadModel()
+        activeModelPath = modelPath
         modelHandle = nativeLoadModel(modelPath, contextSize, gpuLayers)
         if (modelHandle == 0L) throw LlmException("Failed to load on-device GGUF model at $modelPath")
     }
@@ -630,15 +647,25 @@ object JniLlamaCppBridge : NativeLlmBridge {
     }
 
     private fun buildChatMlPrompt(request: LlmRequest): String = buildString {
-        append("<|im_start|>system\n").append(request.system).append("<|im_end|>\n")
-        for (msg in request.history) {
-            append("<|im_start|>").append(msg.role).append("\n").append(msg.content).append("<|im_end|>\n")
+        val isGemma = activeModelPath.lowercase(Locale.ROOT).contains("gemma")
+        val recentHistory = request.history.takeLast(4)
+        if (isGemma) {
+            append("<bos><start_of_turn>user\n").append(request.system).append("\n\n")
+            for (msg in recentHistory) {
+                val speaker = if (msg.role == "user") "Player" else "Leader"
+                append(speaker).append(": ").append(msg.content).append("\n")
+            }
+            append("Player: ").append(request.user).append("<end_of_turn>\n<start_of_turn>model\n<|turn>thought\n<turn|>")
+        } else {
+            append("<|im_start|>system\n").append(request.system).append("<|im_end|>\n")
+            for (msg in recentHistory) {
+                append("<|im_start|>").append(msg.role).append("\n").append(msg.content).append("<|im_end|>\n")
+            }
+            append("<|im_start|>user\n").append(request.user).append("<|im_end|>\n<|im_start|>assistant\n")
         }
-        append("<|im_start|>user\n").append(request.user).append("<|im_end|>\n<|im_start|>assistant\n")
     }
 
     @JvmStatic private external fun nativeLoadModel(modelPath: String, contextSize: Int, gpuLayers: Int): Long
     @JvmStatic private external fun nativeFreeModel(handle: Long)
     @JvmStatic private external fun nativeGenerate(handle: Long, prompt: String, maxTokens: Int, temperature: Float): String
 }
-

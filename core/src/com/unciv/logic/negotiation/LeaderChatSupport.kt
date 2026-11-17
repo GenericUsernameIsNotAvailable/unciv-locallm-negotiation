@@ -1,4 +1,4 @@
-﻿package com.unciv.logic.negotiation
+package com.unciv.logic.negotiation
 
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.diplomacy.DiplomacyManager
@@ -111,7 +111,7 @@ object PlatformLlm {
     /** Registered by the mobile launcher when a native JNI/Metal runtime (llama.cpp / LiteRT-LM) is linked. */
     @Volatile var nativeBridge: NativeLlmBridge? = if (JniLlamaCppBridge.isNativeLibraryAvailable) JniLlamaCppBridge else null
 
-    /** Directory where on-device `.gguf` models are stored; defaults to `llm-models` inside the working directory. */
+    /** Directory where on-device `.gguf` models are stored; set by AndroidLauncher or resolved via Gdx.files. */
     @Volatile var modelsDirectory: File? = null
 
     fun resolveModelsDirectory(): File {
@@ -169,7 +169,10 @@ internal object LlmSettings {
 
     /** Starts or verifies the local background neural language model when ChatTable opens. */
     fun warmUpBackgroundModel(): String {
-        if (isUsingOnDevice()) return statusDescription()
+        if (isUsingOnDevice()) {
+            try { onDeviceBackend.warmUp() } catch (_: Throwable) {}
+            return statusDescription()
+        }
         val cfg = current()
         BackgroundLlmRunner.ensureRunning(
             configuredBaseUrl = cfg.baseUrl,
@@ -189,9 +192,9 @@ internal object LlmSettings {
             BackgroundLlmRunner.managedStatusLabel != null ->
                 BackgroundLlmRunner.managedStatusLabel!!
             downloaded ->
-                "Local GGUF (${spec.id} â€” auto-starts in background)"
+                "Local GGUF (${spec.id} — auto-starts in background)"
             else ->
-                "Local Model (${current().model} â€” auto-managed in background)"
+                "Local Model (${current().model} — auto-managed in background)"
         }
     }
 
@@ -313,4 +316,3 @@ internal object ChatStore {
         return encoded
     }
 }
-

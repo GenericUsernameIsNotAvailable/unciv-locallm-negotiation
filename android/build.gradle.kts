@@ -1,4 +1,4 @@
-﻿
+
 import com.unciv.build.AndroidImagePacker
 import com.unciv.build.BuildConfig
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    compileSdk = 37
+    compileSdk = 36
     sourceSets {
         getByName("main").apply {
             manifest.srcFile("AndroidManifest.xml")
@@ -115,7 +115,7 @@ tasks.register("copyAndroidNatives") {
 }
 
 tasks.whenTaskAdded {
-    // See https://github.com/yairm210/Unciv/issues/4842
+    // See https://github.com/jerry8870/Unciv4iOS
     if ("package" in name || "assemble" in name || "bundleRelease" in name) {
         dependsOn("copyAndroidNatives")
     }
@@ -153,4 +153,3 @@ dependencies {
     //   or by running `./gradlew :android:assembleRelease` which does that
     coreLibraryDesugaring(libs.android.desugar)
 }
-

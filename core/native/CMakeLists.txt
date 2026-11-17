@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.18)
 project(unciv_llama LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 
-# Point LLAMA_CPP_DIR to a local checkout of https://github.com/ggml-org/llama.cpp
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod+fp16+i8mm" CACHE STRING "ARM arch" FORCE)
+    add_compile_options(-O3 -march=armv8.2-a+dotprod+fp16+i8mm -fomit-frame-pointer)
+else()
+    add_compile_options(-O3 -fomit-frame-pointer)
+endif()
+
 if(DEFINED LLAMA_CPP_DIR AND EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
     add_subdirectory(${LLAMA_CPP_DIR} llama.cpp EXCLUDE_FROM_ALL)
     add_library(unciv_llama SHARED llama_jni.cpp)

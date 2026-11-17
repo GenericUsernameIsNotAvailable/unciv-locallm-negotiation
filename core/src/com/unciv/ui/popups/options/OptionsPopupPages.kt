@@ -1,4 +1,4 @@
-package com.unciv.ui.popups.options
+﻿package com.unciv.ui.popups.options
 
 import com.badlogic.gdx.Gdx
 import com.unciv.GUI
@@ -16,6 +16,7 @@ enum class OptionsPopupPages(
     Display("Display", "UnitPromotionIcons/Scouting", { DisplayTab(this) }),
     Gameplay("Gameplay", "OtherIcons/Options", { GameplayTab(this) }),
     Automation("Automation", "OtherIcons/NationSwap", { AutomationTab(this) }),
+    AiModels("AI Models", "OtherIcons/Chat", { AiModelsTab(this) }),
     Language("Language", "FlagIcons/", { LanguageTab(this) }) {
         override fun getIcon(language: String) =
             if (ImageGetter.imageExists(iconPath + language)) ImageGetter.getImage(iconPath + language)
@@ -44,3 +45,4 @@ enum class OptionsPopupPages(
         operator fun get(ordinal: Int) = entries.first { it.ordinal == ordinal }
     }
 }
+

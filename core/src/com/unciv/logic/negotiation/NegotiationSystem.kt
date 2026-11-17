@@ -457,7 +457,15 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
             previousDraft = previousDraft
         )
         val wordCount = playerText.trim().split(Regex("""\s+""")).size
-        val needsSemantic = LlmSettings.semanticParsingEnabled && fastCommitment == null && fastTrade == null && wordCount >= 3
+        val hasBargainingCue = Regex(
+            """\b(?:offer|trade|give|pay|gold|gpt|per\s+turn|city|cities|luxury|luxuries|resource|pact|alliance|peace|war|embargo|loan|more|less|sweeten|deal|throw\s+in|chuck)\b|\d+""",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(playerText)
+        val isQuestionOrGreeting = playerText.trim().endsWith("?") || Regex(
+            """^(?:hi|hello|hey|greetings|how\s+are|what|who|why|where|when|do\s+you|tell\s+me)\b""",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(playerText.trim())
+        val needsSemantic = LlmSettings.semanticParsingEnabled && !LlmSettings.isUsingOnDevice() && fastCommitment == null && fastTrade == null && wordCount >= 4 && hasBargainingCue && !isQuestionOrGreeting
 
         return SemanticTurnContext(
             playerText = playerText,

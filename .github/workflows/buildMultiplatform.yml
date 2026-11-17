@@ -1,4 +1,4 @@
-﻿name: Build Multiplatform
+name: Build Multiplatform
 
 on:
   workflow_dispatch:
@@ -51,6 +51,7 @@ jobs:
             -DANDROID_PLATFORM=android-26 \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLAMA_CPP_DIR=/tmp/llama.cpp \
+            -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16+i8mm \
             -DBUILD_SHARED_LIBS=OFF \
             -DLLAMA_CURL=OFF \
             -DLLAMA_BUILD_TESTS=OFF \
