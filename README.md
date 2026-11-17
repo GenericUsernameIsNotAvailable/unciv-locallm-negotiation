@@ -1,54 +1,33 @@
-# Unciv - Civ V remake for Android & Desktop
+## please see the original Repo for Unciv
+Original Unciv: https://github.com/yairm210/unciv
 
-![](/extraImages/GithubPreviewImage.jpg)
+# Unciv-LLM (An Unofficial fork of Unciv) 
+<img width="2340" height="1080" alt="Screenshot_20261117_100918_Unciv-LLM" src="https://github.com/user-attachments/assets/d381fe2f-0004-427d-a890-fa09b2bfb34a" />
+<img width="2340" height="1080" alt="Screenshot_20261117_095655_Unciv-LLM" src="https://github.com/user-attachments/assets/f2d174c8-03c5-4710-a5ec-ad78132a1360" />
+<img width="1757" height="1080" alt="Screenshot_20261117_100219_Unciv-LLM" src="https://github.com/user-attachments/assets/603b0c32-5766-48e9-a15e-a53c2bc2a183" />
+<img width="1789" height="1080" alt="Screenshot_20261117_100442_Unciv-LLM" src="https://github.com/user-attachments/assets/01ea4166-4f43-40c1-9c40-834bf80dff9c" />
 
-[![Google Play](https://img.shields.io/static/v1?label=Google&message=Play&logo=google-play)](https://play.google.com/store/apps/details?id=com.unciv.app)
-[![F-Droid](https://img.shields.io/f-droid/v/com.unciv.app?logo=f-droid)](https://f-droid.org/en/packages/com.unciv.app/)
-[![itch.io](https://img.shields.io/static/v1?label=itch.io&message=Unciv&color=607D8B&logo=itch.io)](https://yairm210.itch.io/unciv)
-[![Flathub](https://img.shields.io/flathub/v/io.github.yairm210.unciv?logo=flathub)](https://flathub.org/apps/details/io.github.yairm210.unciv)
-[![AUR](https://img.shields.io/aur/version/unciv-bin?logo=arch-linux)](https://aur.archlinux.org/packages/unciv-bin)
-[![pi-apps](https://img.shields.io/badge/dynamic/json?color=c51a4a&label=Pi-Apps&logo=raspberry-pi&query=%24.Unciv.Version&url=https%3A%2F%2Fraw.githubusercontent.com%2FBotspot%2Fpi-apps-analytics%2Fmain%2Fpackage_data_v2.json)](https://github.com/Botspot/pi-apps)
-![Brew](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fformulae.brew.sh%2Fapi%2Fformula%2Funciv.json&query=%24.versions.stable&logo=homebrew&label=Brew)
-[![Chocolatey](https://img.shields.io/chocolatey/v/unciv?logo=chocolatey)](https://community.chocolatey.org/packages/unciv)
-[![scoop-games](https://img.shields.io/scoop/v/unciv?bucket=games)](https://github.com/Calinou/scoop-games)
- 
-[![Build status](https://github.com/yairm210/Unciv/actions/workflows/buildAndTest.yml/badge.svg)](https://github.com/yairm210/Unciv/actions/workflows/buildAndTest.yml)
-[![Discord](https://img.shields.io/discord/586194543280390151?color=%237289DA&logo=discord&logoColor=%23FFFFFF)](https://discord.gg/bjrB4Xw)
 
 
 ## What is this?
-
-An open source, moddability-focused Android and Desktop remake of Civ V, made with [LibGDX](https://github.com/libgdx/libgdx).
+An unofficial pet-project to include small local language model capability into diplomacy within the Unciv game.
+You can download this in addition to the original as it is packaged under a different name so you can check it out without deleting anything :) .
 
 ## Is this any good?
-
-Depends what you're looking for. If you're in the market for high-res graphics, amazing soundtracks, animations etc, I highly recommend Firaxis's Civ-V-like game, "Civilization V".
-
-If you want a small, fast, moddable, FOSS, in-depth 4X that can still run on a potato, you've come to the right place :)
-
+It's getting there. currently in v.1.1.0 the qwen model works best. There have been some tweaks to reduce the latency in response compared to v.1.0.0 but it has come with some minor sacrifices that will soon be dealt with soon to bring it back to standard. \
+For Android: This is mainly aimed towards flagship phone models (e.g Samsung s25 or up). You may try it with other hardware but may struggle.
+For desktop, you should be completely fine. The models are at most 4b but usually 2b, so they're ultra-light.
 ## How do I install?
-
-- **Android** - [Google Play](https://play.google.com/store/apps/details?id=com.unciv.app) or [F-droid](https://f-droid.org/en/packages/com.unciv.app/)
-- **Linux** - [itch.io](https://yairm210.itch.io/unciv), Flatpak via [Flathub](https://flathub.org/apps/details/io.github.yairm210.unciv), or [AUR](https://aur.archlinux.org/packages/unciv-bin)
-- **Windows** - [Grab the MSI](https://github.com/yairm210/Unciv/releases/latest/download/Unciv.msi), or get from [itch.io](https://yairm210.itch.io/unciv), [Chocolatey](https://community.chocolatey.org/packages/unciv), or [Scoop](https://github.com/Calinou/scoop-games)
-- **Raspberry Pi** - [Pi-apps](https://github.com/Botspot/pi-apps)
-- **MacOS** - Via [Brew](https://brew.sh/) (`brew update && brew install unciv`) or install [with this guide](https://yairm210.github.io/Unciv/Other/Installing-on-macOS/) 
-- Jars, APKs and Windows/Linux builds also available in [Releases](https://github.com/yairm210/Unciv/releases) (run jar with `java -jar Unciv.jar`) - *not recommended* since we update frequently and you will quickly become out-of-date
-- [Build from scratch](https://yairm210.github.io/Unciv/Developers/Building-Locally/#without-android-studio) if that's your thing
+For Android: Go to releases on this page (either to the right or at the bottom) and downlaod the top file with the word "debug.apk" in it. \
+for desktop, download the .jar file
 
 ## What's the roadmap?
+Make models run better and confirm smooth gameplay. \
+make available for IOS sideloading. \
+grab yairm210's attention. \
+incorporate user feedback and forks.
 
-In this order:
-
-* Polish!
-    * UI+UX improvements ([suggestions welcome!](https://github.com/yairm210/Unciv/issues/new?assignees=&labels=feature&template=feature_request.md&title=Feature+request%3A+))
-    * Better automation, AI etc. in-game
-* G&K mechanics - see [#4697](https://www.github.com/yairm210/Unciv/issues/4697)
-* BNW mechanics - trade routes, world congress, etc.
-
-At the moment, no one is explicitly working to add these mechanics in - you could be the one! :D
-
-## Contributing
+## Contributing for the ORIGINAL UNCIV (Not Unciv-LLM)
 
 Programmers start [here](https://yairm210.github.io/Unciv/Developers/Building-Locally/)!
 
@@ -60,46 +39,6 @@ You can join us in any of the open issues, or work on improving anything you wan
 
 If not, you can help by spreading the word - vote for Unciv where you can, mention it on Reddit or Twitter etc, and help us with new ideas of how to get the word out!
 
-
-## FAQ
-
-### How about iOS?
-
-I'm not planning on it. It means paying money to Apple, yet another release path, and since I don't have an iOS device it means I can't test it properly.
-
-### Steam release?
-
-Steam has decided that they don't want to host Unciv, they probably don't want to risk legal issues with Firaxis (although those should be non-existent, see below).
- 
-### Will you implement {feature}?
-
-If it's in the original Civ V, then yes!
-
-If not, then the feature won't be added to the base game - possibly it will be added as a way to mod the game, which is constantly expanding.
-
-#### Why not? This is its own game, why not add features that weren't in Civ V?
-
-Having a clear vision is important for actually getting things done.
-
-Anyone can make a suggestion. Not all are good, viable, or simple. Not many can actually implement stuff.
-
-As an open source project, this stuff is done in our spare time, of which there isn't much.
-
-We need a clear-cut criteria to decide what to work on and what not to work on.
-
-#### Will you implement Civ VI?
-
-Considering how long it took to get this far, no.
-
-### How can I learn to play? Where's the wiki?
-
-All the tutorial information is available in-game at menu > civilopedia > tutorials
-
-All the information is included in the amazing [Civ V wiki](https://civilization.fandom.com/wiki/)
-
-Since this is a Civ V clone, you can search Google for how to play Civ V and there are loads of answers =)
-
-Alternatively, you could [join us on Discord](https://discord.gg/bjrB4Xw) and ask there =D
 
 ### Aren't you basically making a Civ V clone? Is that even legal?
 
@@ -114,13 +53,10 @@ It is probably illegal (no solid sources on this):
 
 Interestingly, [Civilization is a registered trademark](https://tsdr.uspto.gov/#caseNumber=74166752&caseType=SERIAL_NO&searchType=statusSearch), but it looks like it's only *that particular logo* which is trademarked, so technically you could make another game called "Civilization" and it'll stick. In any case we're not going there :) 
 
-## Run with Docker [![Docker](https://github.com/yairm210/Unciv/actions/workflows/dockerPublish.yml/badge.svg)](https://github.com/yairm210/Unciv/actions/workflows/dockerPublish.yml)
-
-`docker run -d -p 6901:6901 -p 5901:5901 ghcr.io/yairm210/unciv`
-Then go to http://localhost:6901/vnc.html?password=headless
-
-For more details, e.g. installing Docker, keeping saves between runs and over image updates, building the image yourself,
-troubleshooting connection issues, or using a native VNC client instead of a browser, see [Building-Locally](https://yairm210.github.io/Unciv/Developers/Building-Locally/#running-via-docker).
+### Aren't you basically making a Civ V clone? Is that even legal? (Unciv-LLM)
+I am from UK, and copyright laws can be a little more stringent. That being said, I am not copying Civ V and any similarities are purely coincidental and unintentional.
+What I have copied is Unciv by the user yairm210 who has published this game under the licenses as listed at the bottom of this README document.
+I do not profit nor do I accept any monetary donations for this work. Anything of that nature should be solely directed to the OFFICIAL Unciv Repo by yairm210. https://github.com/yairm210/unciv
 
 ## Licensing and credits
 
