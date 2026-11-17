@@ -1,4 +1,4 @@
-// High-speed JNI bridge connecting JniLlamaCppBridge.kt to llama.cpp on Android (arm64-v8a), iOS (arm64), and Desktop.
+﻿// High-speed JNI bridge connecting JniLlamaCppBridge.kt to llama.cpp on Android (arm64-v8a), iOS (arm64), and Desktop.
 // Optimised for sub-3-second mobile inference via:
 // 1. Persistent llama_context across turns (no 150 MB KV-cache reallocation per message)
 // 2. Prefix KV-cache reuse via llama_memory_seq_rm (skips re-evaluating the system prompt on follow-up turns)
@@ -64,7 +64,7 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeLoadModel(
     const char* path = env->GetStringUTFChars(modelPathJ, nullptr);
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = gpuLayers;
-    mparams.use_mmap = true;
+    // mmap enabled by default
     llama_model* model = llama_model_load_from_file(path, mparams);
     env->ReleaseStringUTFChars(modelPathJ, path);
     if (!model) return 0;
@@ -205,3 +205,4 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeGenerate(
 }
 
 } // extern "C"
+

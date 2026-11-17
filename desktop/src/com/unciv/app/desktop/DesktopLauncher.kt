@@ -1,4 +1,4 @@
-package com.unciv.app.desktop
+﻿package com.unciv.app.desktop
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.files.FileHandle
@@ -43,7 +43,7 @@ internal object DesktopLauncher {
         val createGameArg = arg.find { it.startsWith("--creategame=") }
         if (createGameArg != null) {
             val settingsPath = createGameArg.substringAfter("=")
-            val game = DesktopConsoleGame()
+            val game = UncivGame(true)
 
             UncivGame.Current = game
             UncivGame.Current.settings = GameSettings()
@@ -125,14 +125,14 @@ internal object DesktopLauncher {
         val settings = UncivFiles.getSettingsForPlatformLaunchers(dataDirectory)
         if (settings.isFreshlyCreated) {
             settings.screenSize = ScreenSize.Large // By default we guess that Desktops have larger screens
-            settings.windowState = WindowState(maximumWindowBounds.width, maximumWindowBounds.height)
+            settings.windowState = WindowState(maximumWindowBounds)
 
             FileHandle(dataDirectory + File.separator + SETTINGS_FILE_NAME).writeString(json().toJson(settings), false, Charsets.UTF_8.name()) // so when we later open the game we get fullscreen
         }
         // Kludge! This is a workaround - the matching call in DesktopDisplay doesn't "take" quite permanently,
         // the window might revert to the "config" values when the user moves the window - worse if they
         // minimize/restore. And the config default is 640x480 unless we set something here.
-        val (width, height) = settings.windowState.coerceIn(maximumWindowBounds.width, maximumWindowBounds.height)
+        val (width, height) = settings.windowState.coerceIn(maximumWindowBounds)
         config.setWindowedMode(width, height)
 
         config.setInitialBackgroundColor(BaseScreen.clearColor)
@@ -159,3 +159,4 @@ internal object DesktopLauncher {
         } catch (_: Throwable) { }
     }
 }
+
