@@ -48,6 +48,7 @@ internal class ChatTable(
         setFadeScrollBars(false)
         setScrollingDisabled(true, false)
     }
+    private val scrollPaneCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<ScrollPane>
     private val dealCardWrapper = Table()
     private val input = UncivTextField("Say something or propose a deal")
     private val sendButton = "Send".toTextButton()
@@ -65,7 +66,8 @@ internal class ChatTable(
         add("Talking with [$leaderName]".toLabel(fontSize = 24)).colspan(2).row()
         add(modelLabel).colspan(2).padBottom(5f).row()
         addSeparator()
-        add(scrollPane).colspan(2).width(CHAT_WIDTH).height(CHAT_HEIGHT).padTop(5f).row()
+        scrollPaneCell = add(scrollPane).colspan(2).width(CHAT_WIDTH).height(computeScrollHeight(hasCard = false)).padTop(5f)
+        row()
         add(dealCardWrapper).colspan(2).width(CHAT_WIDTH).padTop(4f).row()
         add(input).width(CHAT_WIDTH - 110f).padTop(5f)
         add(sendButton).width(100f).padLeft(10f).padTop(5f).row()
@@ -82,7 +84,7 @@ internal class ChatTable(
             session.addLeaderInitiative(outboxLine)
         }
         val pairKey = "${aiCiv.civID}>${humanCiv.civID}"
-        ChatStore.pendingProactiveDealFor(pairKey)?.let { proactive ->
+        ChatStore.pendingProactiveDealFor(pairKey, humanCiv.gameInfo.turns)?.let { proactive ->
             pendingDeal = proactive
             ChatStore.setPendingProactiveDeal(pairKey, null)
         }
@@ -161,15 +163,13 @@ internal class ChatTable(
                         val classicTrade = p?.executableTrade
                         val classicCanConfirm = p?.classicTrade is ClassicTradeAssessment.Accepted ||
                             p?.classicTrade is ClassicTradeAssessment.Counteroffered
-                        if (reply is ChatSession.Reply.Said) {
-                            if (acceptedDraft != null) {
-                                pendingDeal = acceptedDraft
-                                pendingClassicTrade = null
-                            } else if (classicTrade != null) {
-                                pendingClassicTrade = classicTrade
-                                pendingClassicAccepted = classicCanConfirm
-                                pendingDeal = null
-                            }
+                        if (acceptedDraft != null) {
+                            pendingDeal = acceptedDraft
+                            pendingClassicTrade = null
+                        } else if (classicTrade != null) {
+                            pendingClassicTrade = classicTrade
+                            pendingClassicAccepted = classicCanConfirm
+                            pendingDeal = null
                         }
                     }
                     refresh(failure = (reply as? ChatSession.Reply.Failed)?.reason)
@@ -193,43 +193,61 @@ internal class ChatTable(
         Concurrency.run("Scroll chat") { launchOnGLThread { scrollToEnd() } }
     }
 
+    private fun computeScrollHeight(hasCard: Boolean): Float {
+        val stageHeight = diplomacyScreen.stage.height.takeIf { it > 0f } ?: 600f
+        val baseAvailable = (stageHeight - 230f).coerceIn(180f, CHAT_HEIGHT)
+        return if (hasCard) (baseAvailable - 115f).coerceAtLeast(110f) else baseAvailable
+    }
+
     private fun rebuildDealCard() {
         dealCardWrapper.clear()
         val draft = pendingDeal
+        val trade = pendingClassicTrade
+        val hasCard = draft != null || trade != null
+        scrollPaneCell.height(computeScrollHeight(hasCard))
         if (draft != null) {
             buildCommitmentCard(draft)
-            return
-        }
-        val trade = pendingClassicTrade
-        if (trade != null) {
+        } else if (trade != null) {
             buildClassicTradeCard(trade, pendingClassicAccepted)
         }
+        invalidateHierarchy()
+        pack()
     }
 
     private fun buildCommitmentCard(draft: DealDraft) {
         val card = Table(BaseScreen.skin).apply { defaults().pad(4f).left() }
-        card.add("Proposed Commitment Deal (ready to confirm):".toLabel(fontColor = Color.GOLD, fontSize = 16)).colspan(2).row()
+        card.add("Proposed Commitment Deal (ready to confirm):".toLabel(fontColor = Color.GOLD, fontSize = 16)).colspan(3).row()
         for (item in draft.items) {
             val bullet = "- ${item.describe()}".toLabel(fontColor = Color.LIGHT_GRAY, fontSize = 14)
             bullet.wrap = true
-            card.add(bullet).width(CHAT_WIDTH - 40f).colspan(2).row()
+            card.add(bullet).width(CHAT_WIDTH - 40f).colspan(3).row()
         }
         val confirmBtn = "Confirm Deal".toTextButton().apply {
             onClick {
                 val ok = negotiation.confirmChatDeal(draft)
                 pendingDeal = null
                 latestTurnNotices.clear()
-                latestTurnNotices += if (ok) "Deal confirmed and now active." else "The deal could not be activated."
+                latestTurnNotices += if (ok) "Deal confirmed and now active." else "The deal has expired or could not be activated."
                 refresh()
             }
         }
-        val cancelBtn = "Cancel".toTextButton().apply {
+        val refuseBtn = "Refuse".toTextButton().apply {
+            onClick {
+                pendingDeal = null
+                negotiation.refuseChatDeal(aiCiv, humanCiv)
+                latestTurnNotices.clear()
+                latestTurnNotices += "Proposal refused."
+                refresh()
+            }
+        }
+        val cancelBtn = "Dismiss".toTextButton().apply {
             onClick {
                 pendingDeal = null
                 refresh()
             }
         }
-        card.add(confirmBtn).padRight(10f)
+        card.add(confirmBtn).padRight(8f)
+        card.add(refuseBtn).padRight(8f)
         card.add(cancelBtn).row()
         dealCardWrapper.add(card).width(CHAT_WIDTH)
     }

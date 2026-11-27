@@ -230,14 +230,17 @@ internal object LlmSettings {
  * Conversations must outlive GameInfo clones (the game plays each turn on a clone), so they are kept
  * here, per running game, instead of in the NegotiationSystem. Not saved: they are lost when the game is closed.
  */
+internal data class TurnScopedDeal(val draft: DealDraft, val createdTurn: Int)
+
 internal object ChatStore {
     private var gameId = ""
     private var loadedData = ""
     private val sessions = HashMap<String, ChatSession>()
     private val trackers = HashMap<String, ManipulationTracker>()
     private val lastTradeDrafts = HashMap<String, ClassicTradeDraft>()
-    private val pendingProactiveDeals = HashMap<String, DealDraft>()
+    private val pendingProactiveDeals = HashMap<String, TurnScopedDeal>()
     private val lastProactiveTurns = HashMap<String, Int>()
+    private var lastGlobalProactiveTurn: Int = -1000
 
     @Synchronized
     private fun syncGame(gameId: String, chatData: String, createSession: () -> ChatSession) {
@@ -249,6 +252,7 @@ internal object ChatStore {
             lastTradeDrafts.clear()
             pendingProactiveDeals.clear()
             lastProactiveTurns.clear()
+            lastGlobalProactiveTurn = -1000
         }
         if (chatData.isNotEmpty() && chatData != loadedData && sessions.isEmpty()) {
             loadedData = chatData
@@ -259,6 +263,10 @@ internal object ChatStore {
                 val t = ManipulationTracker()
                 t.restoreFlags(saved.recentFlatteries, saved.recentFlatteryAsks, saved.hostileStrikes)
                 trackers[saved.key] = t
+                saved.lastProactiveTurn?.let { turn ->
+                    lastProactiveTurns[saved.key] = turn
+                    if (turn > lastGlobalProactiveTurn) lastGlobalProactiveTurn = turn
+                }
             }
         }
     }
@@ -284,11 +292,27 @@ internal object ChatStore {
     }
 
     @Synchronized
-    fun pendingProactiveDealFor(key: String): DealDraft? = pendingProactiveDeals[key]
+    fun pendingProactiveDealFor(key: String, currentTurn: Int): DealDraft? {
+        val scoped = pendingProactiveDeals[key] ?: return null
+        if (scoped.createdTurn < currentTurn) {
+            pendingProactiveDeals.remove(key)
+            return null
+        }
+        return scoped.draft
+    }
 
     @Synchronized
-    fun setPendingProactiveDeal(key: String, draft: DealDraft?) {
-        if (draft == null) pendingProactiveDeals.remove(key) else pendingProactiveDeals[key] = draft
+    fun setPendingProactiveDeal(key: String, draft: DealDraft?, turn: Int = 0) {
+        if (draft == null) pendingProactiveDeals.remove(key)
+        else pendingProactiveDeals[key] = TurnScopedDeal(draft, turn)
+    }
+
+    /** Clears all unconfirmed proactive deals and stale trade drafts from earlier turns so expired cards never linger in chat. */
+    @Synchronized
+    fun clearExpiredOnNewTurn(currentTurn: Int) {
+        val expiredKeys = pendingProactiveDeals.entries.filter { it.value.createdTurn < currentTurn }.map { it.key }
+        for (k in expiredKeys) pendingProactiveDeals.remove(k)
+        lastTradeDrafts.clear()
     }
 
     @Synchronized
@@ -297,19 +321,24 @@ internal object ChatStore {
     @Synchronized
     fun setLastProactiveTurn(key: String, turn: Int) {
         lastProactiveTurns[key] = turn
+        if (turn > lastGlobalProactiveTurn) lastGlobalProactiveTurn = turn
     }
+
+    @Synchronized
+    fun lastGlobalProactiveTurn(): Int = lastGlobalProactiveTurn
 
     @Synchronized
     fun encodeCurrent(gameId: String): String {
         if (gameId != this.gameId) return ""
-        val keys = (sessions.keys + trackers.keys).distinct()
+        val keys = (sessions.keys + trackers.keys + lastProactiveTurns.keys).distinct()
         val list = keys.mapNotNull { key ->
             val msgs = sessions[key]?.messages.orEmpty()
             val tracker = trackers[key]
             val (flat, asks) = tracker?.snapshotFlags() ?: (emptyList<Boolean>() to emptyList())
             val strikes = tracker?.hostileStrikes ?: 0
-            if (msgs.isEmpty() && flat.isEmpty() && asks.isEmpty() && strikes == 0) null
-            else SavedLeaderChat(key, msgs, flat, asks, strikes)
+            val proTurn = lastProactiveTurns[key]
+            if (msgs.isEmpty() && flat.isEmpty() && asks.isEmpty() && strikes == 0 && proTurn == null) null
+            else SavedLeaderChat(key, msgs, flat, asks, strikes, proTurn)
         }
         val encoded = ChatSnapshotCodec.encode(list)
         loadedData = encoded

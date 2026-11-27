@@ -1,9 +1,9 @@
-﻿// High-speed JNI bridge connecting JniLlamaCppBridge.kt to llama.cpp on Android (arm64-v8a), iOS (arm64), and Desktop.
-// Optimised for sub-3-second mobile inference via:
-// 1. Persistent llama_context across turns (no 150 MB KV-cache reallocation per message)
-// 2. Prefix KV-cache reuse via llama_memory_seq_rm (skips re-evaluating the system prompt on follow-up turns)
-// 3. 6-thread big-core execution pool + large batch prefill
-// 4. Early stopping on turn-end markers and 2-3 sentence completion
+// High-speed JNI bridge connecting JniLlamaCppBridge.kt to llama.cpp on Android (arm64-v8a), iOS (arm64), and Desktop.
+// v1.2.0:
+// 1. Persistent llama_context across turns (zero 150 MB reallocation per message) + 6-thread big-core pool
+// 2. Clean KV memory reset per call (prevents ISWA sliding-window position corruption on Gemma 4 & cross-leader context bleed)
+// 3. Built-in Gemma 4 thought-channel stripping (<|channel>thought...<channel|>) and accurate stop markers
+// 4. Repeat penalty to prevent generic/looping phrasing on 1.5B-2B models
 #include <jni.h>
 #include <algorithm>
 #include <string>
@@ -16,7 +16,6 @@ struct UncivLlamaHolder {
     llama_context* ctx = nullptr;
     int contextSize = 2048;
     int nThreads = 6;
-    std::vector<llama_token> cachedTokens;
 };
 
 static int computeOptimalThreads() {
@@ -28,8 +27,15 @@ static int computeOptimalThreads() {
 
 static bool hasStopMarker(const std::string& out, size_t& cutPos) {
     static const char* markers[] = {
-        "<|im_end|>", "<end_of_turn>", "<|eot_id|>", "<|turn|>", "<turn|>",
-        "\nUser:", "\nPlayer:", "\nHuman:", nullptr
+        "<turn|>",
+        "<|turn>",
+        "<|im_end|>",
+        "<end_of_turn>",
+        "<|eot_id|>",
+        "\nUser:",
+        "\nPlayer:",
+        "\nHuman:",
+        nullptr
     };
     for (int i = 0; markers[i] != nullptr; ++i) {
         size_t pos = out.find(markers[i]);
@@ -41,17 +47,27 @@ static bool hasStopMarker(const std::string& out, size_t& cutPos) {
     return false;
 }
 
-static int countCompletedSentences(const std::string& out) {
-    int count = 0;
-    for (size_t i = 0; i < out.size(); ++i) {
-        char c = out[i];
-        if (c == '.' || c == '!' || c == '?') {
-            if (i + 1 == out.size() || out[i + 1] == ' ' || out[i + 1] == '\n' || out[i + 1] == '"') {
-                ++count;
-            }
+static std::string stripChannelBlocks(const std::string& raw) {
+    std::string s = raw;
+    // Strip complete <|channel>...<channel|> blocks
+    while (true) {
+        size_t start = s.find("<|channel>");
+        if (start == std::string::npos) break;
+        size_t end = s.find("<channel|>", start);
+        if (end != std::string::npos) {
+            s.erase(start, (end + 10) - start);
+        } else {
+            // Unclosed channel block
+            s.erase(start);
+            break;
         }
     }
-    return count;
+    // Strip stray <channel|> if present at start
+    size_t strayEnd = s.find("<channel|>");
+    if (strayEnd != std::string::npos) {
+        s.erase(0, strayEnd + 10);
+    }
+    return s;
 }
 
 extern "C" {
@@ -84,7 +100,7 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeLoadModel(
         llama_model_free(model);
         return 0;
     }
-    return reinterpret_cast<jlong>(new UncivLlamaHolder{model, ctx, ctxLen, threads, {}});
+    return reinterpret_cast<jlong>(new UncivLlamaHolder{model, ctx, ctxLen, threads});
 }
 
 JNIEXPORT void JNICALL
@@ -118,61 +134,38 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeGenerate(
         return env->NewStringUTF("");
     }
 
+    // Truncate from the middle/front if prompt ever approaches context limit
+    const int tokenCap = (maxTokens > 0 && maxTokens <= 200) ? maxTokens : 140;
+    if (static_cast<int>(tokens.size()) + tokenCap + 16 > holder->contextSize) {
+        int maxPromptTokens = std::max(128, holder->contextSize - tokenCap - 16);
+        if (static_cast<int>(tokens.size()) > maxPromptTokens) {
+            tokens.resize(maxPromptTokens);
+        }
+    }
+
     llama_context* ctx = holder->ctx;
     llama_memory_t mem = llama_get_memory(ctx);
+    llama_memory_clear(mem, true);
 
-    if (n_prompt + maxTokens + 32 > holder->contextSize) {
-        llama_memory_clear(mem, false);
-        holder->cachedTokens.clear();
+    llama_batch fullBatch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
+    if (llama_decode(ctx, fullBatch) != 0) {
+        return env->NewStringUTF("");
     }
-
-    size_t commonPrefix = 0;
-    const size_t maxPrefix = std::min(holder->cachedTokens.size(), tokens.size());
-    while (commonPrefix < maxPrefix && holder->cachedTokens[commonPrefix] == tokens[commonPrefix]) {
-        ++commonPrefix;
-    }
-    if (commonPrefix >= tokens.size()) {
-        commonPrefix = tokens.size() > 0 ? tokens.size() - 1 : 0;
-    }
-
-    bool decodedOk = false;
-    if (commonPrefix > 16) {
-        if (llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(commonPrefix), -1)) {
-            llama_batch deltaBatch = llama_batch_get_one(
-                tokens.data() + commonPrefix,
-                static_cast<int32_t>(tokens.size() - commonPrefix)
-            );
-            if (llama_decode(ctx, deltaBatch) == 0) {
-                decodedOk = true;
-            }
-        }
-    }
-
-    if (!decodedOk) {
-        llama_memory_clear(mem, false);
-        llama_batch fullBatch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
-        if (llama_decode(ctx, fullBatch) != 0) {
-            holder->cachedTokens.clear();
-            return env->NewStringUTF("");
-        }
-    }
-
-    holder->cachedTokens = tokens;
 
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.12f, 0.0f, 0.0f));
     if (temperature <= 0.05f) {
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
     } else {
         llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.92f, 1));
         llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
         llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
 
-    const int tokenCap = (maxTokens > 0 && maxTokens <= 140) ? maxTokens : 88;
     std::string out;
-    out.reserve(320);
+    out.reserve(512);
 
     for (int i = 0; i < tokenCap; ++i) {
         llama_token id = llama_sampler_sample(smpl, ctx, -1);
@@ -190,19 +183,11 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeGenerate(
 
         llama_batch nextBatch = llama_batch_get_one(&id, 1);
         if (llama_decode(ctx, nextBatch) != 0) break;
-        holder->cachedTokens.push_back(id);
-
-        if (i >= 24 && out.size() >= 85 && out.find('{') == std::string::npos) {
-            char lastChar = out.back();
-            if ((lastChar == '.' || lastChar == '!' || lastChar == '?') && countCompletedSentences(out) >= 2) {
-                break;
-            }
-        }
     }
 
     llama_sampler_free(smpl);
-    return env->NewStringUTF(out.c_str());
+    std::string cleaned = stripChannelBlocks(out);
+    return env->NewStringUTF(cleaned.c_str());
 }
 
 } // extern "C"
-

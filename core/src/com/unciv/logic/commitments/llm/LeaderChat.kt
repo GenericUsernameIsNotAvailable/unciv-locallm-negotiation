@@ -195,6 +195,7 @@ object ChatPromptBuilder {
         if (proposalDirective.isNotBlank()) appendLine(proposalDirective)
         appendLine("How to speak:")
         appendLine("- Speak only in words, in your own voice, in two to three complete, natural sentences. No actions, descriptions or text in brackets.")
+        appendLine("- Stay deeply in character as ${profile.leaderName} of ${profile.nationName}: speak like a vivid historical ruler shaped by your character and feelings. Never sound like a modern chatbot or corporate diplomat (never say 'It is true that...', 'cooperation could be a solution', 'in the best interest of our nations', or 'I understand your concern').")
         appendLine("- Write numbers above 20 as digits (e.g. 272, 350, 993) rather than spelling them out in words.")
         appendLine("- Answer what the player has just said and engage with their point so the conversation flows naturally. Do not greet again unless they greeted you.")
         appendLine("- Even if you are warlike or have little interest in trade, you are holding a diplomatic audience: weigh proposals pragmatically instead of shutting down the conversation with one-word dismissals.")
@@ -290,15 +291,30 @@ object ReplyCleaner {
     private val stageDirections = Regex("""\*[^*]*\*""")
     private val bracketed = Regex("""\([^)]*\)|\[[^\]]*]""") // "(eyes narrowing slightly)", "[sighs]"
     private val quoteMarks = Regex("""["\u201C\u201D\u201E]""")
-    // Some models (e.g. Qwen3, Gemma 4) may emit their reasoning in <think> tags: closed blocks, or one cut off by the token limit.
+    // Strip <think>...</think> and Gemma 4 <|channel>thought...<channel|> reasoning blocks.
     private val thinking = Regex("""<think>.*?(?:</think>|$)""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val gemmaChannel = Regex("""<\|channel>.*?(?:<channel\|>|$)""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val strayControlTokens = Regex("""<(?:\|turn>|turn\|>|\|channel>|channel\|>|\|im_start\|>|\|im_end\|>|start_of_turn>|end_of_turn>|bos>|eos>)""", RegexOption.IGNORE_CASE)
+    // Catch unlabelled reasoning preambles ("Thinking Process: 1. Analyze the User Input: ...") if a model leaks thoughts.
+    private val leakedThinkingPreamble = Regex(
+        """^(?:thinking\s+process|thought\s+process|reasoning|internal\s+monologue|analysis)\s*:.*""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
     private const val MAX_LENGTH = 400
 
     /** Tidies a raw model reply into plain spoken words; returns null if nothing usable is left. */
     fun clean(raw: String, leaderName: String): String? {
-        var text = raw.replace(thinking, " ").replace(stageDirections, " ").replace(bracketed, " ").trim()
+        var text = raw
+            .replace(thinking, " ")
+            .replace(gemmaChannel, " ")
+            .replace(strayControlTokens, " ")
+            .trim()
+        if (leakedThinkingPreamble.containsMatchIn(text)) {
+            return null
+        }
+        text = text.replace(stageDirections, " ").replace(bracketed, " ").trim()
         // "Caesar: Hello" / "Assistant: Hello" / "Leader: Hello"
-        val prefix = Regex("""^(?:${Regex.escape(leaderName)}|assistant|leader|ai)\s*:\s*""", RegexOption.IGNORE_CASE)
+        val prefix = Regex("""^(?:${Regex.escape(leaderName)}|assistant|leader|ai|model)\s*:\s*""", RegexOption.IGNORE_CASE)
         text = text.replace(prefix, "")
         text = text.replace(quoteMarks, "")
         text = text.replace(Regex("""\s+"""), " ").trim()
@@ -418,8 +434,9 @@ class ChatSession(
                     Problem.Agreement -> request.copy(system = request.system + "\n" + FIRM_REMINDER, temperature = 0.5f)
                     Problem.ContradictsAcceptance -> request.copy(system = request.system + "\n" + ACCEPTANCE_REMINDER, temperature = 0.4f)
                     Problem.Echo -> request.copy(system = request.system + "\n" + ECHO_REMINDER, temperature = 0.9f)
+                    Problem.Empty -> request.copy(system = request.system + "\n" + EMPTY_REMINDER, temperature = 0.6f)
                     is Problem.Claims -> request.copy(system = request.system + "\n" + claimReminder(problem.violations), temperature = 0.5f)
-                    else -> request
+                    Problem.None -> request
                 }
                 val second = generate(retryRequest, profile)
                 // If the retry said nothing, a first reply that only needs repairing (not a fake agreement) is repaired instead.
@@ -473,9 +490,10 @@ class ChatSession(
      */
     private fun settle(candidate: String?, firstProblem: Problem, checks: Checks, salt: Int): String? {
         if (candidate == null) {
-            return when (firstProblem) {
-                Problem.Agreement -> FALLBACKS[salt % FALLBACKS.size]
-                Problem.ContradictsAcceptance -> ACCEPTED_FALLBACKS[salt % ACCEPTED_FALLBACKS.size]
+            return when {
+                firstProblem == Problem.Agreement -> FALLBACKS[salt % FALLBACKS.size]
+                firstProblem == Problem.ContradictsAcceptance || checks.allowAgreement ->
+                    ACCEPTED_FALLBACKS[salt % ACCEPTED_FALLBACKS.size]
                 else -> null
             }
         }
@@ -529,6 +547,9 @@ class ChatSession(
 
         const val ECHO_REMINDER = "Your previous reply repeated your example lines or your own earlier words. " +
             "Reply again in new words, answering exactly what the player just said."
+
+        const val EMPTY_REMINDER = "Your previous output was empty or contained internal analysis instead of spoken dialogue. " +
+            "Output ONLY your direct spoken reply in character (2 to 3 natural sentences) with no thinking steps or preamble."
 
         /** Neutral lines for when a model can only produce copies of its own words: better silence than a parrot. */
         val PLAIN_REPLIES = listOf("Speak plainly.", "Go on.", "I am listening.")

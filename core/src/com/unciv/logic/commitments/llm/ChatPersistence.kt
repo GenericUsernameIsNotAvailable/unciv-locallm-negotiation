@@ -3,16 +3,17 @@ package com.unciv.logic.commitments.llm
 import com.unciv.logic.commitments.CommitmentSnapshotCodec
 
 /**
- * Serializes and restores chat transcripts and manipulation-tracker history per leader pair into a single
- * versioned string (`GameInfo.chatData`), so conversations, brown-nosing memory, and hostility strikes
- * survive turn clones and save/load.
+ * Serializes and restores chat transcripts, manipulation-tracker history, and proactive-proposal cooldowns
+ * per leader pair into a single versioned string (`GameInfo.chatData`), so conversations, brown-nosing memory,
+ * hostility strikes, and refusal cooldowns survive turn clones and save/load.
  */
 data class SavedLeaderChat(
     val key: String,
     val messages: List<ChatSession.Message>,
     val recentFlatteries: List<Boolean> = emptyList(),
     val recentFlatteryAsks: List<Boolean> = emptyList(),
-    val hostileStrikes: Int = 0
+    val hostileStrikes: Int = 0,
+    val lastProactiveTurn: Int? = null
 )
 
 object ChatSnapshotCodec {
@@ -26,7 +27,8 @@ object ChatSnapshotCodec {
             val escKey = CommitmentSnapshotCodec.esc(chat.key)
             val flatStr = chat.recentFlatteries.joinToString(",") { if (it) "1" else "0" }
             val askStr = chat.recentFlatteryAsks.joinToString(",") { if (it) "1" else "0" }
-            appendLine("T|$escKey|$flatStr|$askStr|${chat.hostileStrikes}")
+            val proTurn = chat.lastProactiveTurn?.toString() ?: ""
+            appendLine("T|$escKey|$flatStr|$askStr|${chat.hostileStrikes}|$proTurn")
             for (msg in chat.messages.takeLast(MAX_SAVED_MESSAGES_PER_PAIR)) {
                 val role = if (msg.fromPlayer) "P" else "L"
                 appendLine("M|$escKey|$role|${CommitmentSnapshotCodec.esc(msg.text)}")
@@ -43,6 +45,7 @@ object ChatSnapshotCodec {
         val flatteriesByKey = HashMap<String, List<Boolean>>()
         val asksByKey = HashMap<String, List<Boolean>>()
         val strikesByKey = HashMap<String, Int>()
+        val proactiveTurnsByKey = HashMap<String, Int?>()
 
         for (line in lines.drop(1)) {
             val parts = line.split('|')
@@ -53,6 +56,7 @@ object ChatSnapshotCodec {
                     flatteriesByKey[key] = parseBits(parts[2])
                     asksByKey[key] = parseBits(parts[3])
                     strikesByKey[key] = parts.getOrNull(4)?.toIntOrNull() ?: 0
+                    proactiveTurnsByKey[key] = parts.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull()
                 }
                 "M" -> if (parts.size >= 4) {
                     val key = CommitmentSnapshotCodec.unesc(parts[1])
@@ -68,7 +72,8 @@ object ChatSnapshotCodec {
                 messages = msgs,
                 recentFlatteries = flatteriesByKey[key].orEmpty(),
                 recentFlatteryAsks = asksByKey[key].orEmpty(),
-                hostileStrikes = strikesByKey[key] ?: 0
+                hostileStrikes = strikesByKey[key] ?: 0,
+                lastProactiveTurn = proactiveTurnsByKey[key]
             )
         }
     }

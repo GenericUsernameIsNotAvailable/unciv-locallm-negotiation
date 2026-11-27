@@ -646,22 +646,45 @@ object JniLlamaCppBridge : NativeLlmBridge {
         return LlmResponse(out)
     }
 
-    private fun buildChatMlPrompt(request: LlmRequest): String = buildString {
-        val isGemma = activeModelPath.lowercase(Locale.ROOT).contains("gemma")
-        val recentHistory = request.history.takeLast(4)
-        if (isGemma) {
-            append("<bos><start_of_turn>user\n").append(request.system).append("\n\n")
-            for (msg in recentHistory) {
-                val speaker = if (msg.role == "user") "Player" else "Leader"
-                append(speaker).append(": ").append(msg.content).append("\n")
+    private fun buildChatMlPrompt(request: LlmRequest): String =
+        buildPromptForModel(request, activeModelPath)
+
+    /**
+     * Formats [request] using the exact native chat template for the loaded model family:
+     * - Gemma 4 (`gemma-4-*`): `<|turn>system\n...<turn|>\n<|turn>user\n...<turn|>\n<|turn>model\n<|channel>thought\n<channel|>`
+     *   (omits `<|think|>` in system turn and pre-closes an empty thought channel so Gemma 4 skips internal reasoning).
+     * - Qwen 2.5 / ChatML: `<|im_start|>system\n...<|im_end|>\n...<|im_start|>assistant\n`.
+     */
+    fun buildPromptForModel(request: LlmRequest, modelPath: String): String = buildString {
+        val lower = modelPath.lowercase(Locale.ROOT)
+        val isGemma4 = lower.contains("gemma-4") || lower.contains("gemma4")
+        val isOlderGemma = !isGemma4 && lower.contains("gemma")
+        val recentHistory = request.history.takeLast(6)
+        when {
+            isGemma4 -> {
+                append("<|turn>system\n").append(request.system.trim()).append("<turn|>\n")
+                for (msg in recentHistory) {
+                    val role = if (msg.role == "assistant") "model" else "user"
+                    append("<|turn>").append(role).append("\n").append(msg.content.trim()).append("<turn|>\n")
+                }
+                append("<|turn>user\n").append(request.user.trim()).append("<turn|>\n")
+                append("<|turn>model\n<|channel>thought\n<channel|>")
             }
-            append("Player: ").append(request.user).append("<end_of_turn>\n<start_of_turn>model\n<|turn>thought\n<turn|>")
-        } else {
-            append("<|im_start|>system\n").append(request.system).append("<|im_end|>\n")
-            for (msg in recentHistory) {
-                append("<|im_start|>").append(msg.role).append("\n").append(msg.content).append("<|im_end|>\n")
+            isOlderGemma -> {
+                append("<start_of_turn>user\n").append(request.system.trim()).append("\n\n")
+                for (msg in recentHistory) {
+                    val speaker = if (msg.role == "user") "Player" else "Leader"
+                    append(speaker).append(": ").append(msg.content.trim()).append("\n")
+                }
+                append("Player: ").append(request.user.trim()).append("<end_of_turn>\n<start_of_turn>model\n")
             }
-            append("<|im_start|>user\n").append(request.user).append("<|im_end|>\n<|im_start|>assistant\n")
+            else -> {
+                append("<|im_start|>system\n").append(request.system.trim()).append("<|im_end|>\n")
+                for (msg in recentHistory) {
+                    append("<|im_start|>").append(msg.role).append("\n").append(msg.content.trim()).append("<|im_end|>\n")
+                }
+                append("<|im_start|>user\n").append(request.user.trim()).append("<|im_end|>\n<|im_start|>assistant\n")
+            }
         }
     }
 

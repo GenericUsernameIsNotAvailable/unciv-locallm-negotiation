@@ -31,6 +31,7 @@ import com.unciv.logic.commitments.ProposalResult
 import com.unciv.logic.commitments.StrategicAiDirector
 import com.unciv.logic.commitments.StrategicPosture
 import com.unciv.models.ruleset.Building
+import com.unciv.models.ruleset.nation.PersonalityValue
 import com.unciv.models.ruleset.IConstruction
 import com.unciv.models.ruleset.tech.Technology
 import com.unciv.models.ruleset.unit.BaseUnit
@@ -173,6 +174,7 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
     // ---------------------------------------------------------------- events from the game
 
     fun onNewTurn() {
+        ChatStore.clearExpiredOnNewTurn(gameInfo.turns)
         checkDemilitarizedZones()
         val report = manager.tick()
         for (msg in report.outbox) {
@@ -240,10 +242,16 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
                 }
 
                 if (!LlmSettings.strategicAiEnabled) continue
+                // Ensure ChatStore is synced with saved chatData before checking cooldowns
+                val session = chatWith(ai, human)
+                if (gameInfo.turns - ChatStore.lastGlobalProactiveTurn() < ProactiveDiplomacy.GLOBAL_TURNS_BETWEEN_PROPOSALS) {
+                    continue
+                }
                 val pairKey = "${ai.civID}>${human.civID}"
                 val commonEnemies = ai.getCivsAtWarWith()
                     .filter { it != human && it.isMajorCiv && !it.isDefeated() && human.knows(it) && !human.isAtWarWith(it) }
                     .map { it.civID }
+                val declareWarTrait = ai.getPersonality()[PersonalityValue.DeclareWar]
                 val proposal = ProactiveDiplomacy.considerProposal(
                     aiCiv = ai.civID,
                     aiLeaderName = ai.nation.leaderName,
@@ -255,21 +263,27 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
                     commonEnemiesOfAi = commonEnemies,
                     aiGold = ai.gold,
                     aiGoldPerTurn = ai.stats.statsForNextTurn.gold.toInt(),
-                    existingOpenCommitments = manager.openCommitmentsOf(ai.civID)
+                    existingOpenCommitments = manager.openCommitmentsOf(ai.civID),
+                    willingnessToDeclareWar = declareWarTrait,
+                    isAtWarWithAnyone = ai.isAtWar()
                 )
                 if (proposal != null) {
-                    val session = chatWith(ai, human)
-                    session.addLeaderInitiative(proposal.message)
-                    ChatStore.setPendingProactiveDeal(pairKey, proposal.draft)
-                    ChatStore.setLastProactiveTurn(pairKey, gameInfo.turns)
-                    saveChatData()
-                    human.addNotification(
-                        "[${ai.nation.leaderName}] of [${ai.civName}] has sent a diplomatic proposal: ${proposal.message}",
-                        DiplomacyAction(ai, showTrade = false),
-                        NotificationCategory.Diplomacy,
-                        ai.civName,
-                        NotificationIcon.Diplomacy
-                    )
+                    val alreadyRecentDuplicate = session.messages.takeLast(8).any {
+                        !it.fromPlayer && (it.text == proposal.message || it.text.contains("Non-Aggression Pact", ignoreCase = true))
+                    }
+                    if (!alreadyRecentDuplicate) {
+                        session.addLeaderInitiative(proposal.message)
+                        ChatStore.setPendingProactiveDeal(pairKey, proposal.draft, gameInfo.turns)
+                        ChatStore.setLastProactiveTurn(pairKey, gameInfo.turns)
+                        saveChatData()
+                        human.addNotification(
+                            "[${ai.nation.leaderName}] of [${ai.civName}] has sent a diplomatic proposal: ${proposal.message}",
+                            DiplomacyAction(ai, showTrade = false),
+                            NotificationCategory.Diplomacy,
+                            ai.civName,
+                            NotificationIcon.Diplomacy
+                        )
+                    }
                 }
             }
         }
@@ -465,7 +479,7 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
             """^(?:hi|hello|hey|greetings|how\s+are|what|who|why|where|when|do\s+you|tell\s+me)\b""",
             RegexOption.IGNORE_CASE
         ).containsMatchIn(playerText.trim())
-        val needsSemantic = LlmSettings.semanticParsingEnabled && !LlmSettings.isUsingOnDevice() && fastCommitment == null && fastTrade == null && wordCount >= 4 && hasBargainingCue && !isQuestionOrGreeting
+        val needsSemantic = LlmSettings.semanticParsingEnabled && fastCommitment == null && fastTrade == null && wordCount >= 4 && hasBargainingCue && !isQuestionOrGreeting
 
         return SemanticTurnContext(
             playerText = playerText,
@@ -912,6 +926,18 @@ class NegotiationSystem(private val gameInfo: GameInfo) {
     fun confirmChatDeal(draft: DealDraft): Boolean {
         val proposed = manager.propose(draft) as? ProposalResult.Proposed ?: return false
         return manager.accept(proposed.dealId, draft.counterparty) == AcceptResult.Activated
+    }
+
+    /** Records an explicit refusal of an AI's deal proposal so it does not spam the player again soon. */
+    fun refuseChatDeal(ai: Civilization, human: Civilization) {
+        val pairKey = "${ai.civID}>${human.civID}"
+        ChatStore.setPendingProactiveDeal(pairKey, null)
+        // Push cooldown well past MIN_TURNS_BETWEEN_PROPOSALS so refused leaders wait ~35 turns
+        val extraDelay = ProactiveDiplomacy.MIN_TURNS_AFTER_REFUSAL - ProactiveDiplomacy.MIN_TURNS_BETWEEN_PROPOSALS
+        ChatStore.setLastProactiveTurn(pairKey, gameInfo.turns + extraDelay.coerceAtLeast(0))
+        val session = chatWith(ai, human)
+        session.say("I decline that proposal.")
+        saveChatData()
     }
 
     fun drainOutboxLinesFor(ai: Civilization, human: Civilization): List<String> {
