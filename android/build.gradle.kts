@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    compileSdk = 36
+    compileSdk = 37
     sourceSets {
         getByName("main").apply {
             manifest.srcFile("AndroidManifest.xml")
@@ -115,7 +115,7 @@ tasks.register("copyAndroidNatives") {
 }
 
 tasks.whenTaskAdded {
-    // See https://github.com/jerry8870/Unciv4iOS
+    // See https://github.com/yairm210/Unciv/issues/4842
     if ("package" in name || "assemble" in name || "bundleRelease" in name) {
         dependsOn("copyAndroidNatives")
     }

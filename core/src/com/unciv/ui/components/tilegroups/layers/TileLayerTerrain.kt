@@ -18,6 +18,8 @@ class TileLayerTerrain(tileGroup: TileGroup, size: Float) : TileLayer(tileGroup,
 
     val tileBaseImages: ArrayList<Image> = ArrayList()
     private var tileImageIdentifiers = listOf<String>()
+    /** Era and style of the owner the current images were picked for, see [TileSetStrings.getOwnedTileImageLocation] */
+    private var tileImageOwnerKey: String? = null
     private var bottomRightRiverImage: Image? = null
     private var bottomRiverImage: Image? = null
     private var bottomLeftRiverImage: Image? = null
@@ -126,7 +128,7 @@ class TileLayerTerrain(tileGroup: TileGroup, size: Float) : TileLayer(tileGroup,
     private val neighborEdgeDataByNeighbor = HashMap<TileView, NeighborEdgeData>()
 
     private fun getEdgeTileLocations(): Sequence<String> =
-        tileGroup.tileView.getVisibleNeighbors().flatMap { neighbor ->
+        tileGroup.neighbors.asSequence().flatMap { neighbor ->
             val neighborEdgeData = neighborEdgeDataByNeighbor.getOrPut(neighbor) {
                 val clockPosition = tileGroup.tileView.getNeighborClockPosition(neighbor)
                 val direction = NeighborDirection.byClockPosition[clockPosition]
@@ -171,12 +173,16 @@ class TileLayerTerrain(tileGroup: TileGroup, size: Float) : TileLayer(tileGroup,
 
     private fun updateTileImage(viewingCiv: CivView?) {
         val tileBaseImageLocations = getTileBaseImageLocations(viewingCiv)
+        // Owned tiles can use an era or style specific image, so a new owner can change the images even when the base locations don't
+        val ownerKey = if (tileGroup.tileView.owningCity() == null) null
+            else tileGroup.tileView.getOwner()?.let { "${it.getEra().name}/${it.getStyleOrCivName()}" }
 
-        if (tileBaseImageLocations.size == tileImageIdentifiers.size) {
+        if (ownerKey == tileImageOwnerKey && tileBaseImageLocations.size == tileImageIdentifiers.size) {
             if (tileBaseImageLocations.withIndex().all { (i, imageLocation) -> tileImageIdentifiers[i] == imageLocation })
                 return // All image identifiers are the same as the current ones, no need to change anything
         }
         tileImageIdentifiers = tileBaseImageLocations
+        tileImageOwnerKey = ownerKey
 
         // Record where old terrain images sit in TileMapLayer so new ones can be inserted at
         // the same position, preserving the isometric Z-order established at map construction.
@@ -316,7 +322,7 @@ class TileLayerTerrain(tileGroup: TileGroup, size: Float) : TileLayer(tileGroup,
             .mix(tileView.getOwner()?.civName)
             .mix(tileView.owningCity() != null)
             .mix(tileView.hasBottomRightRiver).mix(tileView.hasBottomRiver).mix(tileView.hasBottomLeftRiver)
-        for (neighbor in tileView.getVisibleNeighbors()) key = key.mix(neighbor.getCachedTerrainNameSet().hashCode())
+        for (neighbor in tileGroup.neighbors) key = key.mix(neighbor.getCachedTerrainNameSet().hashCode())
         return key
     }
 

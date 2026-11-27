@@ -73,6 +73,7 @@ com_crashlytics_export_strings.xml
 /desktop/build/
 /server/build/
 /html/build/
+/web/build/
 /ios/build/
 /ios-moe/build/
 /buildSrc/build
@@ -197,11 +198,3 @@ detekt/reports.html
 /.github/workflows/unciv.wixpdb
 /.github/workflows/wix-msi-files/
 /desktop/packr/*
-
-# Local LLM weights, binaries, and probe outputs
-llm-models/
-android/assets/llm-models/
-llm-probe*.txt
-android/assets/llm-probe*.txt
-*.gguf
-*.gguf.part

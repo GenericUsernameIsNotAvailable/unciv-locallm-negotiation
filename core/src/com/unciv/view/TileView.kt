@@ -1,17 +1,22 @@
 package com.unciv.view
 
 import com.unciv.logic.city.City
+import com.unciv.UncivGame
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.map.MapPathing
 import com.unciv.logic.map.TileMap
 import com.unciv.logic.map.mapunit.MapUnit
+import com.unciv.logic.map.pathingmap.PathingMap
 import com.unciv.logic.map.tile.ImprovementBuildingProblem
 import com.unciv.logic.map.tile.RoadStatus
 import com.unciv.logic.map.tile.Tile
+import com.unciv.logic.map.tile.TileInterface
 import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.tile.Terrain
 import com.unciv.models.ruleset.tile.TileImprovement
 import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.GameContext
+import com.unciv.models.ruleset.unique.Unique
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
@@ -23,7 +28,7 @@ import yairm210.purity.annotations.Readonly
 /** View of a [Tile] from the perspective of [viewer] via [tileMapView]. */
 class TileView internal constructor(private val tile: Tile, val tileMapView: TileMapView,
                viewer: Civilization?,
-               spectatorMode: Boolean = false) : View<Tile>(tile, viewer, spectatorMode) {
+               spectatorMode: Boolean = false) : View<Tile>(tile, viewer, spectatorMode), TileInterface<TileView> {
 
     // Navigation
     @Readonly fun getCivView(): CivView? = tileMapView.gameView?.civView
@@ -105,7 +110,8 @@ class TileView internal constructor(private val tile: Tile, val tileMapView: Til
      * debug mode has the whole map revealed, or [getCivView] is watching a defeated game play out.
      * TODO: Replace all usages with altering the view function called, to reveal data where relevant */
     @Readonly fun isForceVisible(): Boolean = viewer == null || DebugUtils.VISIBLE_MAP || getCivView()?.isMapRevealed() == true
-    @Readonly fun getVisibleNeighbors(): Sequence<TileView> =
+    /** Neighbors the viewer has explored */
+    @Readonly override fun getNeighbors(): Sequence<TileView> =
         tile.neighbors
             .filter { viewer == null || it.isExplored(viewer) }
             .map { tileMapView.getTile(it) }
@@ -129,6 +135,35 @@ class TileView internal constructor(private val tile: Tile, val tileMapView: Til
             .map { tileMapView.getTile(it) }
 
     @Readonly fun isCityCenter(): Boolean = tile.isCityCenter()
+    @Readonly fun getContinent(): Int = tile.getContinent()
+    @Readonly fun isAdjacentToRiver(): Boolean = tile.isAdjacentToRiver()
+    /** `true` if the viewer treats this tile as road-connected: has an unpillaged road, or forest/jungle that count as roads for them */
+    @Readonly fun hasConnection(): Boolean = viewer != null && tile.hasConnection(viewer)
+    /** `true` if a road could be planned through this tile by [viewer] */
+    @Readonly fun isValidRoadPathTile(): Boolean = viewer != null && MapPathing.isValidRoadPathTile(viewer, tile)
+    @Readonly @Suppress("purity")
+    private fun getRoadPathingMap(viewer: Civilization, cache: RoadPathingCache): PathingMapView = cache.getOrPut(this) {
+        PathingMapView(PathingMap.createRoadPathingMap(viewer, tile), tileMapView, viewer)
+    }
+    /** Best road path from this tile to [destination], or `null` if there is none.
+     *  Uses A* if the settings say so, with the pathing map kept in [cache] so repeated queries from this tile are cheap.
+     *  Otherwise uses the simple connection search, always run from the lower-indexed tile so both directions give the same road. */
+    @Readonly fun getRoadPath(destination: TileView, cache: RoadPathingCache): List<TileView>? {
+        val viewer = viewer ?: return null
+        if (UncivGame.Current.settings.useAStarPathfinding)
+            return getRoadPathingMap(viewer, cache).getShortestPath(destination)
+        val (start, end) = if (tile.zeroBasedIndex < destination.tile.zeroBasedIndex) tile to destination.tile else destination.tile to tile
+        return MapPathing.getRoadPath(viewer, start, end)?.map { tileMapView.getTile(it) }
+    }
+    /** Best road path from this tile to any of [destinations], or `null` if none is reachable. Pathing maps are kept in [cache]. */
+    @Readonly fun getRoadPathToAny(destinations: Set<TileView>, maxBfsReachPadding: Int, cache: RoadPathingCache): List<TileView>? {
+        val viewer = viewer ?: return null
+        // TODO: replace with multi-target AStar
+        val maxTurns = maxBfsReachPadding + destinations.minOf { it.aerialDistanceTo(this) }
+        val pathingMap = getRoadPathingMap(viewer, cache)
+        val otherCity = pathingMap.bfsUntilMatchingTile(maxTurns) { it in destinations } ?: return null
+        return pathingMap.getShortestPath(otherCity) // this just reads from cached results
+    }
     @Readonly fun isWorked(): Boolean = tile.isWorked()
     @Readonly fun isBlockaded(): Boolean = tile.isBlockaded()
     @Readonly fun providesYield(): Boolean = tile.providesYield()
@@ -192,9 +227,25 @@ class TileView internal constructor(private val tile: Tile, val tileMapView: Til
         val tileToCheck = if (pretendLastTerrainRemoved) getTileWithoutLastTerrain() else tile
         return tileToCheck.improvementFunctions.getImprovementBuildingProblems(improvement, unitView.unwrap().cache.state).toSet()
     }
-    /** Whether the viewing civ can currently build [improvement] on this tile */
-    @Readonly fun canBuildImprovement(improvement: TileImprovement): Boolean =
-        viewer != null && tile.improvementFunctions.canBuildImprovement(improvement, viewer.state)
+    /** Whether the viewing civ can currently build [improvement] on this tile.
+     *  If [unitView] is given, its unit's own context is taken into account as well. */
+    @Readonly fun canBuildImprovement(improvement: TileImprovement, unitView: MapUnitView? = null): Boolean {
+        if (unitView == null)
+            return viewer != null && tile.improvementFunctions.canBuildImprovement(improvement, viewer.state)
+        val unit = unitView.unwrap()
+        return tile.improvementFunctions.canBuildImprovement(improvement, GameContext(civInfo = unit.civ, unit = unit, tile = tile))
+    }
+    /** A copy of this tile with [removeTerrainFeature] and/or the improvement removed, for evaluating changes without applying them.
+     *  Not cached and not part of the map - only meant to be queried.
+     *  TODO: Not sure what to do with "alternative tiles", it's a Hard Problem, a lot of 
+     *  */
+    @Readonly fun withRemovals(removeTerrainFeature: String?, removeImprovement: Boolean): TileView {
+        @LocalState val alternative = tile.clone(addUnits = false)
+        alternative.setTerrainTransients()
+        if (removeTerrainFeature != null) alternative.removeTerrainFeature(removeTerrainFeature)
+        if (removeImprovement) alternative.removeImprovement()
+        return TileView(alternative, tileMapView, viewer, spectatorMode)
+    }
     /** Fresh copy of [tile] with its top terrain feature removed - not cached, since the tile can change */
     @Readonly private fun getTileWithoutLastTerrain(): Tile {
         @LocalState val newTile = tile.clone(addUnits = false)
@@ -263,3 +314,11 @@ class TileView internal constructor(private val tile: Tile, val tileMapView: Til
 
 // Helpers built on top of the view API, rather than being part of it
 @Readonly fun TileView.getBaseTerrain(): Terrain = getRuleset().terrains[baseTerrain]!!
+@Readonly fun TileView.getUnpillagedRoad(): RoadStatus = if (roadIsPillaged) RoadStatus.None else roadStatus
+@Readonly fun TileView.isHill(): Boolean = getAllTerrains().any { it.isHill }
+/** Only considers explored neighbors */
+@Readonly fun TileView.isAdjacentToCoast(): Boolean = isLand && getNeighbors().any { it.getBaseTerrain().isCoast }
+@Readonly fun TileView.isNaturalWonder(): Boolean = naturalWonder != null
+@Readonly fun TileView.terrainHasUnique(uniqueType: UniqueType): Boolean = getAllTerrains().any { it.hasUnique(uniqueType) }
+@Readonly fun TileView.getTerrainMatchingUniques(uniqueType: UniqueType): Sequence<Unique> =
+    getAllTerrains().asSequence().flatMap { it.getMatchingUniques(uniqueType) }

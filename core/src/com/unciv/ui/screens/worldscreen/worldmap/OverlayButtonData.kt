@@ -141,7 +141,6 @@ class ConnectRoadOverlayButtonData(val unitView: MapUnitView, val tileView: Tile
 
     private fun connectRoadToTargetTile(worldMapHolder: WorldMapHolder, selectedUnit: MapUnit, targetTilePosition: HexCoord) {
         selectedUnit.automatedRoadConnectionDestination = targetTilePosition
-        selectedUnit.automatedRoadConnectionPath = null
         selectedUnit.action = Constants.connectRoadAction
         selectedUnit.automated = true
         UnitAutomation.automateUnitMoves(GameView(selectedUnit.civ.gameInfo, selectedUnit.civ).getMapUnitView(selectedUnit))
@@ -196,9 +195,9 @@ class MoveSpyOverlayButtonData(val spyView: SpyView, val cityView: ForeignCityVi
         spyActionButton.onActivation(UncivSound.Silent) {
             if (cityView != null) {
                 spyView.tryMoveTo(cityView)
-                worldScreen.game.pushScreen{ EspionageScreen(worldScreen.selectedCiv, worldScreen) }
+                worldScreen.game.pushScreen { EspionageScreen(worldScreen.selectedCiv, worldScreen) }
             } else {
-                worldScreen.game.pushScreen{ EspionageScreen(worldScreen.selectedCiv, worldScreen) }
+                worldScreen.game.pushScreen { EspionageScreen(worldScreen.selectedCiv, worldScreen) }
                 worldScreen.bottomUnitTable.selectSpy(null)
             }
             worldMapHolder.removeUnitActionOverlay()

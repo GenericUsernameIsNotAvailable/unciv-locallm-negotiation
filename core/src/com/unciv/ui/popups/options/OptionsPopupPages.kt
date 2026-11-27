@@ -1,4 +1,4 @@
-﻿package com.unciv.ui.popups.options
+package com.unciv.ui.popups.options
 
 import com.badlogic.gdx.Gdx
 import com.unciv.GUI
@@ -45,4 +45,3 @@ enum class OptionsPopupPages(
         operator fun get(ordinal: Int) = entries.first { it.ordinal == ordinal }
     }
 }
-

@@ -236,7 +236,7 @@ class DiplomacyScreen(
     internal fun setChat(otherCiv: Civilization): ChatTable {
         rightSideTable.clear()
         val chatTable = ChatTable(this, otherCiv)
-        rightSideTable.add(chatTable)
+        rightSideTable.add(chatTable).grow()
         return chatTable
     }
 

@@ -2,8 +2,13 @@ package com.unciv.ui.screens.diplomacyscreen
 
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.math.Rectangle
+import com.badlogic.gdx.scenes.scene2d.Stage
+import com.badlogic.gdx.scenes.scene2d.ui.Cell
+import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.ui.Value
 import com.badlogic.gdx.utils.Align
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.commitments.DealDraft
@@ -12,6 +17,7 @@ import com.unciv.logic.commitments.llm.ClassicTradeAssessment
 import com.unciv.logic.commitments.llm.ManipulationSignal
 import com.unciv.logic.commitments.llm.MessageToneAnalysis
 import com.unciv.logic.commitments.llm.MobileModelSpec
+import com.unciv.logic.event.EventBus
 import com.unciv.logic.negotiation.ChatStore
 import com.unciv.logic.negotiation.LlmSettings
 import com.unciv.logic.negotiation.PreparedChatTurn
@@ -26,13 +32,15 @@ import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.basescreen.UncivStage
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
 import com.unciv.utils.withGLContext
 
 /**
  * A text conversation with an AI leader, shown on the right side of the diplomacy screen.
- * Supports both binding Commitment Deal cards and Classic Trade cards synced directly with [TradeTable].
+ * Supports both binding Commitment Deal cards and Classic Trade cards synced directly with [TradeTable],
+ * and dynamically shifts and resizes above the mobile soft keyboard via [UncivStage.VisibleAreaChanged].
  */
 internal class ChatTable(
     private val diplomacyScreen: DiplomacyScreen,
@@ -42,16 +50,32 @@ internal class ChatTable(
     private val negotiation = humanCiv.gameInfo.negotiation
     private val session: ChatSession = negotiation.chatWith(aiCiv, humanCiv)
     private val leaderName = aiCiv.nation.leaderName.ifEmpty { aiCiv.civName }
+    private val chatWidth: Float = diplomacyScreen.rightSideLabelWidth()
+        .takeIf { it >= 280f }
+        ?.coerceIn(300f, MAX_CHAT_WIDTH)
+        ?: DEFAULT_CHAT_WIDTH
 
     private val transcriptTable = Table().apply { defaults().pad(4f).left() }
     private val scrollPane = ScrollPane(transcriptTable, BaseScreen.skin).apply {
         setFadeScrollBars(false)
         setScrollingDisabled(true, false)
     }
-    private val scrollPaneCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<ScrollPane>
+    private val modelLabel = "AI: ${LlmSettings.statusDescription()}".toLabel(fontColor = Color.GRAY, fontSize = 14)
+    private val titleLabel: Label = "Talking with [$leaderName]".toLabel(fontSize = 24)
     private val dealCardWrapper = Table()
     private val input = UncivTextField("Say something or propose a deal")
     private val sendButton = "Send".toTextButton()
+    private val bottomRow = Table().apply { defaults().pad(5f) }
+
+    private val modelLabelCell: Cell<Label>
+    private val scrollPaneCell: Cell<ScrollPane>
+    private val bottomRowCell: Cell<Table>
+
+    private val events = EventBus.EventReceiver()
+    private var lastVisibleArea: Rectangle =
+        (diplomacyScreen.stage as? UncivStage)?.lastKnownVisibleArea?.let { Rectangle(it) }
+            ?: Rectangle(0f, 0f, diplomacyScreen.stage.width.takeIf { it > 0f } ?: 800f, diplomacyScreen.stage.height.takeIf { it > 0f } ?: 600f)
+
     private var waitingForReply = false
     private var pendingDeal: DealDraft? = null
     private var pendingClassicTrade: Trade? = null
@@ -59,26 +83,27 @@ internal class ChatTable(
     /** Shown only for the latest turn right below the newest reply, then cleared on the next message. */
     private val latestTurnNotices = ArrayList<String>()
 
-    private val modelLabel = "AI: ${LlmSettings.statusDescription()}".toLabel(fontColor = Color.GRAY, fontSize = 14)
-
     init {
-        pad(10f)
-        add("Talking with [$leaderName]".toLabel(fontSize = 24)).colspan(2).row()
-        add(modelLabel).colspan(2).padBottom(5f).row()
-        addSeparator()
-        scrollPaneCell = add(scrollPane).colspan(2).width(CHAT_WIDTH).height(computeScrollHeight(hasCard = false)).padTop(5f)
+        top()
+        pad(DEFAULT_PAD)
+        add(titleLabel).colspan(2).row()
+        modelLabelCell = add(modelLabel).colspan(2).padBottom(5f)
         row()
-        add(dealCardWrapper).colspan(2).width(CHAT_WIDTH).padTop(4f).row()
-        add(input).width(CHAT_WIDTH - 110f).padTop(5f)
-        add(sendButton).width(100f).padLeft(10f).padTop(5f).row()
-        val bottomRow = Table().apply { defaults().pad(5f) }
+        addSeparator()
+        scrollPaneCell = add(scrollPane).colspan(2).width(chatWidth).minHeight(MIN_SCROLL_HEIGHT).expandY().fillY().padTop(5f)
+        row()
+        add(dealCardWrapper).colspan(2).width(chatWidth).padTop(4f).row()
+        add(input).width(chatWidth - SEND_BUTTON_WIDTH - 10f).padTop(5f)
+        add(sendButton).width(SEND_BUTTON_WIDTH).padLeft(10f).padTop(5f).row()
+
         bottomRow.add("Back".toTextButton().apply {
             onClick { diplomacyScreen.updateRightSide(aiCiv) }
         })
         bottomRow.add("AI Model Setup".toTextButton().apply {
             onClick { openModelSetupPopup() }
         })
-        add(bottomRow).colspan(2).padTop(6f).row()
+        bottomRowCell = add(bottomRow).colspan(2).padTop(6f)
+        row()
 
         for (outboxLine in negotiation.drainOutboxLinesFor(aiCiv, humanCiv)) {
             session.addLeaderInitiative(outboxLine)
@@ -93,7 +118,13 @@ internal class ChatTable(
         }
         sendButton.onClick { send() }
         input.keyShortcuts.add(Input.Keys.ENTER) { send() }
+
+        events.receive(UncivStage.VisibleAreaChanged::class) {
+            applyVisibleArea(it.visibleArea)
+        }
+
         refresh()
+        applyVisibleArea(lastVisibleArea)
 
         Concurrency.run("Warmup local LLM") {
             LlmSettings.warmUpBackgroundModel()
@@ -101,6 +132,51 @@ internal class ChatTable(
                 modelLabel.setText("AI: ${LlmSettings.statusDescription()}")
             }
         }
+    }
+
+    override fun setStage(newStage: Stage?) {
+        super.setStage(newStage)
+        if (newStage == null) {
+            events.stopReceiving()
+        }
+    }
+
+    private fun applyVisibleArea(visibleArea: Rectangle) {
+        lastVisibleArea = Rectangle(visibleArea)
+        val stageHeight = diplomacyScreen.stage.height.takeIf { it > 0f } ?: 600f
+        val keyboardInset = visibleArea.y.coerceAtLeast(0f)
+        val topInset = (stageHeight - (visibleArea.y + visibleArea.height)).coerceAtLeast(0f)
+        val keyboardOpen = keyboardInset > KEYBOARD_OPEN_THRESHOLD
+
+        padTop(topInset + if (keyboardOpen) 4f else DEFAULT_PAD)
+        padBottom(keyboardInset + if (keyboardOpen) 6f else DEFAULT_PAD)
+
+        modelLabel.isVisible = !keyboardOpen
+        if (keyboardOpen) {
+            modelLabelCell.height(0f).padBottom(0f)
+        } else {
+            modelLabelCell.height(Value.prefHeight).padBottom(5f)
+        }
+
+        bottomRow.isVisible = !keyboardOpen
+        if (keyboardOpen) {
+            bottomRowCell.height(0f).padTop(0f)
+        } else {
+            bottomRowCell.height(Value.prefHeight).padTop(6f)
+        }
+
+        val hasCard = pendingDeal != null || pendingClassicTrade != null
+        val visibleHeight = visibleArea.height.takeIf { it > 0f } ?: stageHeight
+        val chromeHeight = if (keyboardOpen) KEYBOARD_OPEN_CHROME_HEIGHT else NORMAL_CHROME_HEIGHT
+        val cardHeight = if (hasCard) DEAL_CARD_ESTIMATED_HEIGHT else 0f
+        val availableForScroll = (visibleHeight - chromeHeight - cardHeight)
+            .coerceAtLeast(MIN_SCROLL_HEIGHT)
+        scrollPaneCell.height(availableForScroll)
+
+        invalidateHierarchy()
+        diplomacyScreen.rightSideTable.invalidateHierarchy()
+        layout()
+        scrollToEnd()
     }
 
     private fun lockAudienceForTurn() {
@@ -189,29 +265,19 @@ internal class ChatTable(
         if (waitingForReply) addLine(leaderName, "…", false)
         if (failure != null) addLine("", "($failure)", false, Color.GRAY)
         rebuildDealCard()
-        scrollToEnd()
+        applyVisibleArea(lastVisibleArea)
         Concurrency.run("Scroll chat") { launchOnGLThread { scrollToEnd() } }
-    }
-
-    private fun computeScrollHeight(hasCard: Boolean): Float {
-        val stageHeight = diplomacyScreen.stage.height.takeIf { it > 0f } ?: 600f
-        val baseAvailable = (stageHeight - 230f).coerceIn(180f, CHAT_HEIGHT)
-        return if (hasCard) (baseAvailable - 115f).coerceAtLeast(110f) else baseAvailable
     }
 
     private fun rebuildDealCard() {
         dealCardWrapper.clear()
         val draft = pendingDeal
         val trade = pendingClassicTrade
-        val hasCard = draft != null || trade != null
-        scrollPaneCell.height(computeScrollHeight(hasCard))
         if (draft != null) {
             buildCommitmentCard(draft)
         } else if (trade != null) {
             buildClassicTradeCard(trade, pendingClassicAccepted)
         }
-        invalidateHierarchy()
-        pack()
     }
 
     private fun buildCommitmentCard(draft: DealDraft) {
@@ -220,7 +286,7 @@ internal class ChatTable(
         for (item in draft.items) {
             val bullet = "- ${item.describe()}".toLabel(fontColor = Color.LIGHT_GRAY, fontSize = 14)
             bullet.wrap = true
-            card.add(bullet).width(CHAT_WIDTH - 40f).colspan(3).row()
+            card.add(bullet).width(chatWidth - 40f).colspan(3).row()
         }
         val confirmBtn = "Confirm Deal".toTextButton().apply {
             onClick {
@@ -249,7 +315,7 @@ internal class ChatTable(
         card.add(confirmBtn).padRight(8f)
         card.add(refuseBtn).padRight(8f)
         card.add(cancelBtn).row()
-        dealCardWrapper.add(card).width(CHAT_WIDTH)
+        dealCardWrapper.add(card).width(chatWidth)
     }
 
     private fun buildClassicTradeCard(trade: Trade, canConfirmImmediately: Boolean) {
@@ -259,7 +325,7 @@ internal class ChatTable(
         val summary = negotiation.describeHumanSideTrade(trade, humanCiv.civName, aiCiv.civName)
             .toLabel(fontColor = Color.LIGHT_GRAY, fontSize = 14)
         summary.wrap = true
-        card.add(summary).width(CHAT_WIDTH - 40f).colspan(3).row()
+        card.add(summary).width(chatWidth - 40f).colspan(3).row()
 
         if (canConfirmImmediately) {
             val confirmBtn = "Confirm Trade".toTextButton().apply {
@@ -290,7 +356,7 @@ internal class ChatTable(
         }
         card.add(openTableBtn).padRight(8f)
         card.add(cancelBtn).row()
-        dealCardWrapper.add(card).width(CHAT_WIDTH)
+        dealCardWrapper.add(card).width(chatWidth)
     }
 
     private fun describeToneConsequence(tone: MessageToneAnalysis, denouncedNow: Boolean = false): String? {
@@ -376,11 +442,18 @@ internal class ChatTable(
         val line = (if (speaker.isEmpty()) text else "$speaker: $text").toLabel(fontColor = color)
         line.wrap = true
         line.setAlignment(Align.left)
-        transcriptTable.add(line).width(CHAT_WIDTH - 30f).row()
+        transcriptTable.add(line).width(chatWidth - 30f).row()
     }
 
     companion object {
-        private const val CHAT_WIDTH = 520f
-        private const val CHAT_HEIGHT = 340f
+        private const val DEFAULT_CHAT_WIDTH = 520f
+        private const val MAX_CHAT_WIDTH = 640f
+        private const val SEND_BUTTON_WIDTH = 100f
+        private const val DEFAULT_PAD = 10f
+        private const val MIN_SCROLL_HEIGHT = 60f
+        private const val KEYBOARD_OPEN_THRESHOLD = 40f
+        private const val KEYBOARD_OPEN_CHROME_HEIGHT = 110f
+        private const val NORMAL_CHROME_HEIGHT = 215f
+        private const val DEAL_CARD_ESTIMATED_HEIGHT = 115f
     }
 }

@@ -74,9 +74,6 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Cache private var escorting: Boolean = false
 
     var automatedRoadConnectionDestination: HexCoord? = null
-    // Temp disable, since this data broke saves
-    @Transient
-    var automatedRoadConnectionPath: List<HexCoord>? = null
 
     var attacksThisTurn = 0
     var promotions = UnitPromotions()
@@ -135,7 +132,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Transient
     lateinit var currentTile: Tile
 
-    fun hasTile() = ::currentTile.isInitialized
+    @Readonly fun hasTile() = ::currentTile.isInitialized
 
     @Transient
     private var tempUniquesMap = UniqueMap()
@@ -227,7 +224,6 @@ class MapUnit : IsPartOfGameInfoSerialization {
         toReturn.automated = automated
         toReturn.escorting = escorting
         toReturn.automatedRoadConnectionDestination = automatedRoadConnectionDestination
-        toReturn.automatedRoadConnectionPath = automatedRoadConnectionPath
         toReturn.attacksThisTurn = attacksThisTurn
         toReturn.turnsFortified = turnsFortified
         toReturn.promotions = promotions.clone(toReturn)
@@ -477,10 +473,14 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Readonly fun getAirUnitMovementRange(): Int = getRange() * 2
 
     @Readonly
-    fun isEmbarked(): Boolean {
+    fun isEmbarked(): Boolean = isEmbarkedAt(currentTile)
+
+    /** Whether this unit would be embarked if it were standing on [tile] */
+    @Readonly
+    fun isEmbarkedAt(tile: Tile): Boolean {
         if (!baseUnit.isLandUnit) return false
         if (cache.canMoveOnWater) return false
-        return currentTile.isWater
+        return tile.isWater
     }
 
     /** Whether this unit currently has an invisibility unique that hides it from [to] (ignores fog of war,
@@ -524,19 +524,15 @@ class MapUnit : IsPartOfGameInfoSerialization {
         return getMatchingUniques(UniqueType.HealAdjacentUnits).sumOf { it.params[0].toInt() }
     }
 
-    @Readonly
-    fun getHealAmountForCurrentTile() = when {
-        isEmbarked() -> 0 // embarked units can't heal
-        health >= 100 -> 0 // No need to heal if at max health
-        hasUnique(UniqueType.HealOnlyByPillaging, checkCivInfoUniques = true) -> 0
-        else -> healingAmountForTile(getTile(), noTerrainDamage = true)
-    }
-
-    @Readonly fun canHealInCurrentTile() = getHealAmountForCurrentTile() > 0
+    @Readonly fun getHealAmountForCurrentTile() = healingAmountForTile(getTile(), noTerrainDamage = true)
 
     /** Returns the health points [MapUnit] will receive if healing on [tile] */
     @Readonly
     fun healingAmountForTile(tile: Tile, noTerrainDamage: Boolean = false): Int {
+        if (isEmbarkedAt(tile)) return 0 // embarked units can't heal
+        if (health >= 100) return 0 // No need to heal if at max health
+        if (hasUnique(UniqueType.HealOnlyByPillaging, checkCivInfoUniques = true)) return 0
+
         val isFriendlyTerritory = tile.isFriendlyTerritory(civ)
 
         var healing = when {
@@ -566,7 +562,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
             }
         }
 
-        val maxAdjacentHealingBonus = currentTile.neighbors
+        val maxAdjacentHealingBonus = tile.neighbors
             .flatMap { it.getUnits() }.filter { it.civ == civ }
             .maxOfOrNull { it.adjacentHealingBonus() }
         if (maxAdjacentHealingBonus != null)
@@ -647,9 +643,15 @@ class MapUnit : IsPartOfGameInfoSerialization {
      *  Returns the free capacity of [this] carrier for [unit] or units matching the same Unique filters.
      *
      *  - Uses an optimizing algorithm that ensures complex overlapping filters are used to the max.
+     *  - [carriedUnits] defaults to transported aircraft on the current tile. Movement passes the
+     *    destination's prospective transported occupants instead, so a whole payload can be checked
+     *    before any unit changes tile.
      *  - See issue [#15087](https://github.com/yairm210/Unciv/issues/15087)
      */
-    fun checkCarryCapacity(unit: MapUnit): Int {
+    fun checkCarryCapacity(
+        unit: MapUnit,
+        carriedUnits: Sequence<MapUnit> = currentTile.airUnits.asSequence().filter { it.isTransported }
+    ): Int {
         // Fetch ALL "slots", not only those the new unit could occupy - otherwise we couldn't count optimally
         @LocalState
         val slots = mutableListOf<CarrierSlotMatcher.SlotRule>()
@@ -664,7 +666,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
         return CarrierSlotMatcher.availableCapacity(
             slotRules = slots,
-            carriedUnits = currentTile.airUnits.asSequence().filter { it.isTransported },
+            carriedUnits = carriedUnits,
             newUnit = unit
         )
     }

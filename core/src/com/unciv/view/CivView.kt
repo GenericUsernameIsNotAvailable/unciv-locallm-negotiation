@@ -6,6 +6,7 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.managers.ReligionState
 import com.unciv.logic.civilization.managers.VictoryManager
 import com.unciv.logic.map.tile.ImprovementBuildingProblem
+import com.unciv.logic.map.tile.RoadStatus
 import com.unciv.models.Counter
 import com.unciv.models.Religion
 import com.unciv.models.ruleset.BeliefType
@@ -60,6 +61,8 @@ class CivView(civ: Civilization,
     @Readonly fun hasExplored(tileView: TileView): Boolean = civ.hasExplored(tileView.unwrap())
     @Readonly fun isCurrentPlayer(): Boolean = civ.isCurrentPlayer()
     @Readonly fun isHuman(): Boolean = civ.isHuman()
+    /** The best road type our researched techs allow us to build */
+    @Readonly fun getBestRoadAvailable(): RoadStatus = civ.tech.getBestRoadAvailable()
     @Readonly fun getKnownCivs(): List<ForeignCivView> = civ.getKnownCivs().map { gameView.getForeignCivView(it) }.toList()
     @Readonly fun getPersonalityValue(value: PersonalityValue): Float = civ.getPersonality()[value]
     @Readonly fun getHappiness(): Int = civ.getHappiness()
@@ -81,12 +84,16 @@ class CivView(civ: Civilization,
     @Readonly fun shouldShowMoveSpies(): Boolean = civ.espionageManager.shouldShowMoveSpies()
 
     // Religion
+    @Readonly fun mayFoundReligion(): Boolean = civ.religionManager.mayFoundReligionAtAll()
+    @Readonly fun mayEnhanceReligion(): Boolean = civ.religionManager.mayEnhanceReligionAtAll()
     @Readonly fun canFoundPantheon(): Boolean = civ.religionManager.religionState != ReligionState.Pantheon && civ.religionManager.canFoundOrExpandPantheon()
     @Readonly fun canExpandPantheon(): Boolean = civ.religionManager.religionState == ReligionState.Pantheon && civ.religionManager.canFoundOrExpandPantheon()
     @Readonly fun isFoundingReligion(): Boolean = civ.religionManager.religionState == ReligionState.FoundingReligion
     @Readonly fun isEnhancingReligion(): Boolean = civ.religionManager.religionState == ReligionState.EnhancingReligion
     @Readonly fun hasFreeBeliefs(): Boolean = civ.religionManager.hasFreeBeliefs()
     @Readonly fun getReligion(): Religion? = civ.religionManager.religion
+    /** The holy city of our religion, which may belong to another civ */
+    @Readonly fun getHolyCity(): ForeignCityView? = civ.religionManager.getHolyCity()?.let { gameView.getForeignCityView(it) }
     @Readonly fun getBeliefsToChooseAtFounding(): Counter<BeliefType> = civ.religionManager.getBeliefsToChooseAtFounding()
     @Readonly fun getBeliefsToChooseAtEnhancing(): Counter<BeliefType> = civ.religionManager.getBeliefsToChooseAtEnhancing()
     @Readonly fun freeBeliefsAsEnums(): Counter<BeliefType> = civ.religionManager.freeBeliefsAsEnums()
@@ -137,6 +144,7 @@ class CivView(civ: Civilization,
 // Helpers built on top of the view API, rather than being part of it
 // This is so we can separate the minimal API, from the helpful API.
 
+@Readonly fun CivView.hasResource(resource: TileResource): Boolean = getResourceAmount(resource.name) > 0
 @Readonly fun CivView.idleUnitsCount(due: Boolean): Int = getUnits().count { it.isIdle() && it.due == due }
 @Readonly fun CivView.dueUnitsCount(): Int = getUnits().count { it.due && it.isIdle() }
 

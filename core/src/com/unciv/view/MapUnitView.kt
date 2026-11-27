@@ -1,7 +1,10 @@
 package com.unciv.view
 
 import com.unciv.logic.map.mapunit.actions.UnitActionsPillage
+import com.unciv.models.ruleset.unique.Unique
+import com.unciv.models.ruleset.unique.UniqueTriggerActivation
 import com.unciv.models.ruleset.unique.UniqueType
+import com.unciv.logic.map.mapunit.actions.UnitActionModifiers
 import com.unciv.Constants
 import com.unciv.logic.battle.AirInterception
 import com.unciv.logic.battle.Battle
@@ -10,12 +13,15 @@ import com.unciv.logic.battle.MapUnitCombatant
 import com.unciv.logic.battle.Nuke
 import com.unciv.logic.battle.TargetHelper
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.MapUnitAction
+import com.unciv.logic.civilization.NotificationCategory
 import com.unciv.logic.map.MapPathing
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.logic.map.mapunit.PossibleUpgrade
 import com.unciv.logic.map.mapunit.actions.UnitActions
 import com.unciv.logic.map.mapunit.actions.UnitActionsFromUniques
 import com.unciv.models.Counter
+import com.unciv.models.UnitActionConfirmation
 import com.unciv.models.UnitActionType
 import com.unciv.models.ruleset.tile.TileImprovement
 import com.unciv.logic.map.mapunit.AvailablePromotion
@@ -24,6 +30,21 @@ import com.unciv.models.ruleset.unit.Promotion
 import com.unciv.utils.hashOf
 import yairm210.purity.annotations.Readonly
 import kotlin.random.Random
+
+/** An action a unit has, see [MapUnitView.getActions] and [MapUnitView.tryInvokeUnitAction].
+ *  @property id Tells apart several actions of the same [type] (target unit, improvement, unique...), `null` if the type has at most one
+ *  @property available `false` if the unit has this action, but can't perform it right now (no movement left, etc)
+ *  @property confirmation If not null, the player should be asked before invoking this action
+ *  @property priority Modder-set priority of this action, if any - the UI can use it to order actions */
+data class UnitActionView(
+    val type: UnitActionType,
+    val id: String?,
+    val available: Boolean,
+    val title: String,
+    val isCurrentAction: Boolean,
+    val confirmation: UnitActionConfirmation?,
+    val priority: Float?
+)
 
 /** View of a [MapUnit] from the perspective of [viewer] via [gameView]. */
 class MapUnitView internal constructor(
@@ -55,10 +76,9 @@ class MapUnitView internal constructor(
         unit.upgrade.performUpgrade(upgrade, isFree = false)
         return true
     }
-    @Readonly fun hasUniqueToCreateWaterImprovements(): Boolean = unit.cache.hasUniqueToCreateWaterImprovements
-    @Readonly fun hasStrengthBonusInRadiusUnique(): Boolean = unit.cache.hasStrengthBonusInRadiusUnique
-    @Readonly fun hasCitadelPlacementUnique(): Boolean = unit.cache.hasCitadelPlacementUnique
     @Readonly fun getAvailablePromotions(): List<AvailablePromotion> = unit.promotions.getPromotionTreeCandidates()
+    val numberOfPromotions: Int get() = unit.promotions.numberOfPromotions
+    @Readonly fun canIntercept(): Boolean = unit.canIntercept()
     @Readonly fun canAffordPromotions(count: Int): Boolean = unit.promotions.canAffordPromotions(count)
     /** `true` if this unit stands in a non-puppet city of its own civ, so its promotions can be saved as the city's default. */
     @Readonly fun canSaveDefaultPromotions(): Boolean {
@@ -130,17 +150,15 @@ class MapUnitView internal constructor(
             .map { gameView.tileMapView.getTile(it) }
     @Readonly fun getTilesInAttackRange(): List<TileView> =
         unit.getTile().getTilesInDistanceRange(IntRange(1, unit.getRange())).map { gameView.tileMapView.getTile(it) }.toList()
-    @Readonly fun getAttackableEnemies(): List<AttackableTileView> =
-        TargetHelper.getAttackableEnemies(unit, unit.movement.getDistanceToTiles())
+    /** @param stayOnTile If `true`, only attacks from the tile this unit is standing on are considered */
+    @Readonly fun getAttackableEnemies(stayOnTile: Boolean = false): List<AttackableTileView> =
+        TargetHelper.getAttackableEnemies(unit, unit.movement.getDistanceToTiles(), stayOnTile = stayOnTile)
             .map { AttackableTileView(it, viewer, spectatorMode, gameView) }
-    /** `null` if the unit isn't currently pathing a road; otherwise the tiles still to come on that path. */
-    @Readonly fun getFutureAutomatedRoadConnectionTiles(): List<TileView>? {
-        val path = unit.automatedRoadConnectionPath ?: return null
-        val currTileIndex = path.indexOf(unit.currentTile.position)
-        if (currTileIndex == -1) return emptyList()
-        return path.filterIndexed { index, _ -> index > currTileIndex }
-            .mapNotNull { gameView.tileMapView.getTile(it) }
-    }
+    /** The tile this unit is automatically connecting a road to, or `null` if it has none */
+    @Readonly fun getAutomatedRoadConnectionDestination(): TileView? =
+        unit.automatedRoadConnectionDestination?.let { gameView.tileMapView.getTile(unit.civ.gameInfo.tileMap[it]) }
+    /** Cheaper than [canReach], as it's cached */
+    @Readonly fun canReachInCurrentTurn(tileView: TileView): Boolean = unit.movement.canReachInCurrentTurn(tileView.unwrap())
 
     // Actions
     fun trySwapMoveToTile(tileView: TileView, keepEscorting: Boolean = false): Boolean {
@@ -173,6 +191,18 @@ class MapUnitView internal constructor(
         val city = unit.currentTile.getCity() ?: return false
         city.unitShouldUseSavedPromotion[unit.baseUnit.name] = true
         city.unitToPromotions[unit.baseUnit.name] = unit.promotions
+        return true
+    }
+    /** Notifies the owning civ about this unit - activating the notification shows the unit on the map */
+    fun tryAddNotification(text: String, category: NotificationCategory, vararg notificationIcons: String): Boolean {
+        unit.civ.addNotification(text, MapUnitAction(unit), category, *notificationIcons)
+        return true
+    }
+    /** Ends any automation, including the destination of an automated road connection */
+    fun tryStopAutomation(): Boolean {
+        unit.automated = false
+        unit.action = null
+        unit.automatedRoadConnectionDestination = null
         return true
     }
     fun tryDisband(): Boolean {
@@ -217,13 +247,36 @@ class MapUnitView internal constructor(
         AirInterception.airSweep(MapUnitCombatant(unit), targetTileView.unwrap())
         return true
     }
-    /** `true` if [tryInvokeUnitAction] would currently find an enabled action of type [unitActionType] */
-    fun canInvokeUnitAction(unitActionType: UnitActionType): Boolean =
-        UnitActions.getUnitActions(unit, unitActionType).any { it.action != null }
-    /** Invokes the first enabled action of type [unitActionType]
+    /** `true` if [tryInvokeUnitAction] would currently find an enabled action of type [unitActionType]
+     *  @param tile Check as if the unit were performing the action on this tile (defaults to the unit's current tile) - not all action types respect it */
+    fun canInvokeUnitAction(unitActionType: UnitActionType, tile: TileView? = null): Boolean =
+        UnitActions.getUnitActions(unit, unitActionType, tile?.unwrap() ?: unit.getTile()).any { it.action != null }
+    /** The actions this unit has, enabled or not (see [UnitActionView.available]) - pass them to [tryInvokeUnitAction] to invoke them */
+    fun getActions(): List<UnitActionView> =
+        UnitActions.getUnitActions(unit).map { UnitActionView(it.type, it.id, it.action != null, it.title, it.isCurrentAction, it.confirmation,
+            UnitActionModifiers.getActionPriority(unit, it.associatedUnique)) }.toList()
+    /** Invokes the first enabled action of type [unitActionType], and matching [id] if given (see [UnitActionView.id])
      *  @return whether an action was invoked */
-    fun tryInvokeUnitAction(unitActionType: UnitActionType): Boolean = UnitActions.invokeUnitAction(unit, unitActionType)
+    fun tryInvokeUnitAction(unitActionType: UnitActionType, id: String? = null): Boolean = UnitActions.invokeUnitAction(unit, unitActionType, id)
     @Readonly fun canPillage(tile: TileView): Boolean = UnitActionsPillage.canPillage(unit, tile.unwrap())
+    /** Invokes the first enabled [UnitActionType.TriggerUnique] action whose unique is of [uniqueType]
+     *  @return whether an action was invoked */
+    fun tryInvokeTriggerUniqueAction(uniqueType: UniqueType): Boolean {
+        val action = UnitActions.getUnitActions(unit, UnitActionType.TriggerUnique)
+            .firstOrNull { it.action != null && it.associatedUnique?.type == uniqueType }?.action ?: return false
+        action.invoke()
+        return true
+    }
+    /** `true` if this unit's civ may spread its religion with this unit at all */
+    @Readonly fun maySpreadReligion(): Boolean = unit.civ.religionManager.maySpreadReligionAtAll(unit)
+    /** `true` if the unit action [unique] has usages left, see [UnitActionModifiers.canUse] */
+    @Readonly fun canUseUnitActionUnique(unique: Unique): Boolean = UnitActionModifiers.canUse(unit, unique)
+    /** Triggers [unique] on this unit's tile, and applies its action side effects (movement cost, consuming the unit, etc.) */
+    fun tryActivateUnitActionUnique(unique: Unique): Boolean {
+        UniqueTriggerActivation.triggerUnique(unique, unit.civ, unit = unit, tile = unit.currentTile)
+        UnitActionModifiers.activateSideEffects(unit, unique)
+        return true
+    }
     fun tryFortifyIfCan(): Boolean {
         unit.fortifyIfCan()
         return true
@@ -251,11 +304,23 @@ class MapUnitView internal constructor(
 }
 
 // Unit state derived from [MapUnitView.action]
+@Readonly fun MapUnitView.isActionUntilHealed(): Boolean = action?.endsWith("until healed") == true
+@Readonly fun MapUnitView.isSleeping(): Boolean = action?.startsWith(UnitActionType.Sleep.value) == true
+@Readonly fun MapUnitView.isSleepingUntilHealed(): Boolean = isSleeping() && isActionUntilHealed()
+@Readonly fun MapUnitView.isFortifyingUntilHealed(): Boolean = isFortified() && isActionUntilHealed()
 @Readonly fun MapUnitView.isMoving(): Boolean = action?.startsWith("moveTo") == true
 @Readonly fun MapUnitView.isExploring(): Boolean = action == UnitActionType.Explore.value
 @Readonly fun MapUnitView.isAutomatingRoadConnection(): Boolean = action == Constants.connectRoadAction
 @Readonly fun MapUnitView.isPreparingParadrop(): Boolean = action == UnitActionType.Paradrop.value
 @Readonly fun MapUnitView.isPreparingAirSweep(): Boolean = action == UnitActionType.AirSweep.value
+/** `null` if the unit isn't currently pathing a road; otherwise the tiles still to come on that path. */
+@Readonly fun MapUnitView.getFutureAutomatedRoadConnectionTiles(): List<TileView>? {
+    val destination = getAutomatedRoadConnectionDestination() ?: return null
+    val path = getRoadPath(destination) ?: return null
+    val currTileIndex = path.indexOf(getTile())
+    if (currTileIndex == -1) return emptyList()
+    return path.drop(currTileIndex + 1)
+}
 
 @Readonly fun MapUnitView.getImprovementInProgress(): String? = getTile().improvementInProgress
 @Readonly fun MapUnitView.canBuildCurrentImprovement(): Boolean {

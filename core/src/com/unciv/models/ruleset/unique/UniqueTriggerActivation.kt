@@ -158,7 +158,7 @@ object UniqueTriggerActivation {
                     else it
                 }
                 val suffixes = unique.params[1].split(',').map { it.trim() }
-                val flags = unique.params[1].split(',')
+                val flags = unique.params[2].split(',')
                     .mapNotNull { param -> MusicTrackChooserFlags.entries.firstOrNull { it.name.equals(param.trim(), true) } }
                     .toCollection(EnumSet.noneOf(MusicTrackChooserFlags::class.java))
                 return {
@@ -1416,6 +1416,20 @@ object UniqueTriggerActivation {
                         otherCiv.addNotification("Your territory has been stolen by [$civInfo]!",
                             tile.position, NotificationCategory.Cities, civInfo.civName, NotificationIcon.War)
 
+                    true
+                }
+            }
+            
+            UniqueType.OneTimeUnitTakeOverCityState -> {
+                val canHostileTakeover = unit != null
+                    && unit.currentTile.owningCity?.civ?.isCityState == true
+                    && unit.currentTile.owningCity?.civ != unit.civ
+                    && unit.currentTile.owningCity?.civ?.isAtWarWith(unit.civ) == false
+                
+                if (!canHostileTakeover) return null
+                return {
+                    val takeOverVictim = unit.currentTile.owningCity!!.civ
+                    takeOverVictim.cityStateFunctions.hostileTakeover(unit.civ)
                     true
                 }
             }

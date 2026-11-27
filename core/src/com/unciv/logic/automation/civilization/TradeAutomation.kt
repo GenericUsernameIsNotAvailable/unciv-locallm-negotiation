@@ -10,7 +10,6 @@ import com.unciv.logic.trade.TradeEvaluation
 import com.unciv.logic.trade.TradeLogic
 import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeRequest
-import com.unciv.logic.negotiation.ImmediateTrade
 import com.unciv.logic.trade.TradeOfferType
 import kotlin.math.min
 
@@ -23,6 +22,12 @@ object TradeAutomation {
             // Treat 'no trade' state as if all trades are invalid - thus AIs will not update its "turns to offer"
             if (!tradeAndChangeState || !TradeEvaluation().isTradeValid(tradeRequest.trade, civInfo, otherCiv))
                 continue
+            if (civInfo.gameInfo.negotiation.forbidsTrade(civInfo, otherCiv)) {
+                civInfo.tradeRequests.remove(tradeRequest)
+                otherCiv.addNotification("[${civInfo.civName}] has denied your trade request", NotificationCategory.Trade, civInfo.civName, NotificationIcon.Trade)
+                tradeRequest.decline(civInfo)
+                continue
+            }
 
             val tradeLogic = TradeLogic(civInfo, otherCiv)
             tradeLogic.currentTrade.set(tradeRequest.trade)
@@ -32,7 +37,7 @@ object TradeAutomation {
              * the same resource to ANOTHER civ in this turn. Complicated!
              */
             civInfo.tradeRequests.remove(tradeRequest)
-            if (!ImmediateTrade.violatesActiveCommitment(civInfo, otherCiv, tradeLogic.currentTrade) && TradeEvaluation().isTradeAcceptable(tradeLogic.currentTrade, civInfo, otherCiv)) {
+            if (TradeEvaluation().isTradeAcceptable(tradeLogic.currentTrade, civInfo, otherCiv)) {
                 tradeLogic.acceptTrade()
                 civInfo.gameInfo.negotiation.onTradeCompleted(civInfo, otherCiv)
                 otherCiv.addNotification("[${civInfo.civName}] has accepted your trade request", NotificationCategory.Trade, NotificationIcon.Trade, civInfo.civName)
@@ -183,12 +188,12 @@ object TradeAutomation {
 
         for (otherCiv in knownCivs.filter {
             it.isMajorCiv && !it.isAtWarWith(civInfo)
-                && !civInfo.gameInfo.negotiation.forbidsTrade(civInfo, it)
                 && !civInfo.getDiplomacyManager(it)!!.hasFlag(DiplomacyFlags.DeclinedLuxExchange)
         }) {
 
             val isEnemy = civInfo.getDiplomacyManager(otherCiv)!!.isRelationshipLevelLE(RelationshipLevel.Enemy)
-            if (isEnemy || otherCiv.tradeRequests.any { it.requestingCiv == civInfo.civID })
+            if (isEnemy || civInfo.gameInfo.negotiation.forbidsTrade(civInfo, otherCiv) ||
+                otherCiv.tradeRequests.any { it.requestingCiv == civInfo.civID })
                 continue
 
             val trades = potentialLuxuryTrades(civInfo, otherCiv)

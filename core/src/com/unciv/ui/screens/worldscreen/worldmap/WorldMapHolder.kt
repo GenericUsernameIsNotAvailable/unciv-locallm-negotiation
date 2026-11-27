@@ -22,6 +22,7 @@ import com.unciv.logic.map.mapunit.movement.UnitMovement
 import com.unciv.models.UncivSound
 import com.unciv.view.ForeignCityView
 import com.unciv.view.GameView
+import com.unciv.view.MapUnitCombatantView
 import com.unciv.view.MapUnitView
 import com.unciv.view.SpyView
 import com.unciv.view.TileView
@@ -120,8 +121,11 @@ class WorldMapHolder(
             override fun tap(event: InputEvent?, x: Float, y: Float, count: Int, button: Int) {
                 val child = tileGroupMap.hit(x, y, true) ?: return
 
-                if (child is CityButton) { // the city button can be below the tilegroup, since it moves down when first clicked
-                    onTileClicked(child.foreignCityView.getCenterTile())
+                // The hit actor is a descendant of the city button (e.g. a label inside CityTable), not the button itself.
+                // The city button can be below the tilegroup, since it moves down when first clicked
+                val cityButton = child.firstAscendant(CityButton::class.java)
+                if (cityButton != null) {
+                    onTileClicked(cityButton.foreignCityView.getCenterTile())
                     return
                 }
                 if (child is WorldTileGroup) {
@@ -254,7 +258,16 @@ class WorldMapHolder(
             val attackableTile = unitView
                     .getAttackableEnemies()
                     .firstOrNull { it.getTileToAttack() == tileView }
-            if (unitView.canAttack() && attackableTile != null) {
+            // As in Civ V, a ranged unit captures a lone enemy civilian by moving onto it; one on the other domain
+            // (a land unit and a civilian at sea) can only be attacked
+            val defender = attackableTile?.getCombatant()
+            val capturesByMoving = defender is MapUnitCombatantView && defender.getUnitView().isCivilian()
+                && unitView.getBaseUnit().isRanged() && tileView.isLand == unitView.getBaseUnit().isLandUnit && unitView.canReachInCurrentTurn(tileView)
+            if (capturesByMoving) {
+                /** ****** Right-click Move to capture ****** */
+                moveUnitToTargetTile(listOf(unitView), tileView)
+                localShouldUpdate = true
+            } else if (unitView.canAttack() && attackableTile != null) {
                 /** ****** Right-click Attack ****** */
                 val attackerCombatant = unitView.asCombatant()
                 if (!unitView.tryMovePreparingAttack(attackableTile)) return

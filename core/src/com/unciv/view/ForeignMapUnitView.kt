@@ -3,12 +3,13 @@ package com.unciv.view
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.ruleset.unique.Unique
+import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.ruleset.unit.BaseUnit
 import yairm210.purity.annotations.Readonly
 
 /** Should contain information that should be knowable to us about foreign units. Superclass of [MapUnitView]. */
-open class ForeignMapUnitView(internal open val unit: MapUnit, viewer: Civilization, spectatorMode: Boolean = false, gameView: GameView) : OwnedView<MapUnit>(unit, viewer, spectatorMode, gameView) {
+open class ForeignMapUnitView(protected open val unit: MapUnit, viewer: Civilization, spectatorMode: Boolean = false, gameView: GameView) : OwnedView<MapUnit>(unit, viewer, spectatorMode, gameView) {
     @Readonly internal override fun owner(): Civilization = unit.civ
 
     val name: String get() = unit.name
@@ -23,7 +24,7 @@ open class ForeignMapUnitView(internal open val unit: MapUnit, viewer: Civilizat
 
     // Navigation
     @Deprecated("Scheduled for removal - views should unwrap() instead")
-    @Readonly fun getUnit(): MapUnit = unit
+    @JvmName("getUnitDeprecated") @Readonly fun getUnit(): MapUnit = unit
     @Readonly open fun civ(): ForeignCivView = gameView.getForeignCivView(unit.civ)
     /** Get from a foreign view to an inner view, if [unit] belongs to [viewer]. */
     @Readonly fun tryGetMapUnitView(): MapUnitView? {
@@ -46,8 +47,12 @@ open class ForeignMapUnitView(internal open val unit: MapUnit, viewer: Civilizat
     @Readonly fun getStatusMap() = unit.statusMap
     @Readonly fun getMovementMemories() = unit.movementMemories
     @Readonly fun getMostRecentMoveType() = unit.mostRecentMoveType
-    @Readonly fun hasUnique(uniqueType: UniqueType): Boolean = unit.hasUnique(uniqueType)
-    @Readonly fun getMatchingUniques(uniqueType: UniqueType): Sequence<Unique> = unit.getMatchingUniques(uniqueType)
+    /** @param ignoreConditionals If `true`, matches uniques whether or not their conditionals currently apply */
+    @Readonly fun hasUnique(uniqueType: UniqueType, ignoreConditionals: Boolean = false): Boolean =
+        if (ignoreConditionals) unit.hasUnique(uniqueType, GameContext.IgnoreConditionals) else unit.hasUnique(uniqueType)
+    /** @param ignoreConditionals If `true`, matches uniques whether or not their conditionals currently apply */
+    @Readonly fun getMatchingUniques(uniqueType: UniqueType, ignoreConditionals: Boolean = false): Sequence<Unique> =
+        if (ignoreConditionals) unit.getMatchingUniques(uniqueType, GameContext.IgnoreConditionals) else unit.getMatchingUniques(uniqueType)
     @Readonly fun hasReachedMaxXPFromBarbarians(): Boolean =
         unit.promotions.totalXpProduced() >= unit.civ.gameInfo.ruleset.modOptions.constants.maxXPfromBarbarians
 
@@ -58,6 +63,7 @@ open class ForeignMapUnitView(internal open val unit: MapUnit, viewer: Civilizat
 }
 
 // Helpers built on top of the view API, rather than being part of it
+@Readonly fun ForeignMapUnitView.shortDisplayName(): String = if (instanceName != null) "[$instanceName]" else "[$name]"
 @Readonly fun ForeignMapUnitView.isAirUnit(): Boolean = getBaseUnit().isAirUnit()
 @Readonly fun ForeignMapUnitView.isCivilian(): Boolean = getBaseUnit().isCivilian()
 @Readonly fun ForeignMapUnitView.isMilitary(): Boolean = getBaseUnit().isMilitary

@@ -39,7 +39,7 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.random.Random
 
-class Tile : IsPartOfGameInfoSerialization {
+class Tile : IsPartOfGameInfoSerialization, TileInterface<Tile> {
     //region Serialized fields
     var militaryUnit: MapUnit? = null
     var civilianUnit: MapUnit? = null
@@ -113,13 +113,14 @@ class Tile : IsPartOfGameInfoSerialization {
 
     // This is for performance - since we access the neighbors of a tile ALL THE TIME,
     // and the neighbors of a tile never change, it's much more efficient to save the list once and for all!
-    @delegate:Transient
+    @delegate:Transient @get:JvmName("getNeighborsSequence")
     val neighbors: Sequence<Tile> by lazy {
         if (!isTilemapInitialized()) emptySequence()
         else getTilesAtDistance(1).toList().asSequence()
     }
     // We have to .toList() so that the values are stored together once for caching,
     // and the toSequence so that aggregations (like neighbors.flatMap{it.units} don't take up their own space
+    @Readonly override fun getNeighbors(): Sequence<Tile> = neighbors
 
     @Transient
     private var isCityCenterInternal = false
@@ -1201,7 +1202,7 @@ class Tile : IsPartOfGameInfoSerialization {
             }
 
             if (player.playerType == PlayerType.Human)
-                player.exploredRegion.checkTilePosition(position, explorerPosition)
+                player.exploredRegion.expandToInclude(position, explorerPosition)
         } else {
             exploredBy = exploredBy.withoutItem(player.civID)
         }

@@ -365,6 +365,13 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: UnitTriggerable
 
+??? example  "[unitTriggerTarget] takes over the City-State owning the tile it's standing on"
+	Only allows taking over City-States not at war with the unit's root nation. Does not require a friendship or an alliance with the target City-State.
+
+	Example: "[This Unit] takes over the City-State owning the tile it's standing on"
+
+	Applicable to: UnitTriggerable
+
 ??? example  "[unitTriggerTarget] gets a name from the [unitNameGroup] group"
 	Example: "[This Unit] gets a name from the [Scientist] group"
 
@@ -573,6 +580,16 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Global
 
 ??? example  "City-State Influence recovers at twice the normal rate"
+	Applicable to: Global
+
+??? example  "Gain [positiveAmount] Influence per turn with City-States you could demand tribute from"
+	Example: "Gain [3] Influence per turn with City-States you could demand tribute from"
+
+	Applicable to: Global
+
+??? example  "Units are [relativeAmount]% more effective at intimidating City-States"
+	Example: "Units are [+20]% more effective at intimidating City-States"
+
 	Applicable to: Global
 
 ??? example  "[relativeAmount]% growth [cityFilter]"
@@ -1015,6 +1032,16 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 
 	Applicable to: Global
 
+??? example  "[relativeAmount]% counterintelligence effectiveness [cityFilter]"
+	Example: "[+20]% counterintelligence effectiveness [in all cities]"
+
+	Applicable to: Global
+
+??? example  "[relativeAmount]% enemy counterintelligence effectiveness [cityFilter]"
+	Example: "[+20]% enemy counterintelligence effectiveness [in all cities]"
+
+	Applicable to: Global
+
 ??? example  "New spies start with [amount] level(s)"
 	Example: "New spies start with [3] level(s)"
 
@@ -1203,6 +1230,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Global, Unit
 
 ??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [stockpile]"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Mana]"
 
 	Applicable to: Global, Unit
@@ -1718,6 +1747,8 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Tech, Policy, FounderBelief, FollowerBelief, Building, Unit, Promotion, Improvement, Ruins, Event, EventChoice, Victory
 
 ??? example  "Earn [amount]% of [mapUnitFilter] unit's [costOrStrength] as [stockpile] when killed within 4 tiles of a city following this religion"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Example: "Earn [3]% of [Wounded] unit's [Cost] as [Mana] when killed within 4 tiles of a city following this religion"
 
 	Applicable to: FollowerBelief
@@ -1768,7 +1799,7 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
-	Blocks from being built, possibly by conditional. However it can still appear in the menu and be bought with other means such as Gold or Faith
+	Blocks from being built and from the default Gold purchase, possibly by conditional. It is then hidden from the menu, unless a unique allows buying it, such as "Can be purchased with [stat] [cityFilter]" on the object or a civ's "May buy [buildingFilter] buildings with [stat] [cityFilter]"; in that case it is shown and can be bought
 
 	Applicable to: Building, Unit, Improvement
 
@@ -2036,7 +2067,7 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
-	Blocks from being built, possibly by conditional. However it can still appear in the menu and be bought with other means such as Gold or Faith
+	Blocks from being built and from the default Gold purchase, possibly by conditional. It is then hidden from the menu, unless a unique allows buying it, such as "Can be purchased with [stat] [cityFilter]" on the object or a civ's "May buy [buildingFilter] buildings with [stat] [cityFilter]"; in that case it is shown and can be bought
 
 	Applicable to: Building, Unit, Improvement
 
@@ -2424,11 +2455,15 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Global, Unit
 
 ??? example  "Earn [amount]% of killed [mapUnitFilter] unit's [costOrStrength] as [stockpile]"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Example: "Earn [3]% of killed [Wounded] unit's [Cost] as [Mana]"
 
 	Applicable to: Global, Unit
 
 ??? example  "May capture killed [mapUnitFilter] units"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Example: "May capture killed [Wounded] units"
 
 	Applicable to: Unit
@@ -2472,6 +2507,9 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 ??? example  "Can upgrade to [unit]"
 	Example: "Can upgrade to [Musketman]"
 
+	Applicable to: Unit
+
+??? example  "Cannot upgrade"
 	Applicable to: Unit
 
 ??? example  "Destroys tile improvements when attacking"
@@ -2970,7 +3008,7 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: Building, Unit, Improvement
 
 ??? example  "Unbuildable"
-	Blocks from being built, possibly by conditional. However it can still appear in the menu and be bought with other means such as Gold or Faith
+	Blocks from being built and from the default Gold purchase, possibly by conditional. It is then hidden from the menu, unless a unique allows buying it, such as "Can be purchased with [stat] [cityFilter]" on the object or a civ's "May buy [buildingFilter] buildings with [stat] [cityFilter]"; in that case it is shown and can be bought
 
 	Applicable to: Building, Unit, Improvement
 
@@ -4209,11 +4247,15 @@ Simple unique parameters are explained by mouseover. Complex parameters are expl
 	Applicable to: UnitTriggerCondition
 
 ??? example  "&lt;upon defeating a [mapUnitFilter] unit&gt;"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Example: "&lt;upon defeating a [Wounded] unit&gt;"
 
 	Applicable to: UnitTriggerCondition
 
 ??? example  "&lt;upon being defeated&gt;"
+	Does not apply to units destroyed by nuclear explosions, which do not count as combat defeats.
+
 	Applicable to: UnitTriggerCondition
 
 ??? example  "&lt;upon being promoted&gt;"

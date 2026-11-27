@@ -1,3 +1,156 @@
+## 5.0.3
+
+Unit "heal" actions respect terrain damage as "negative healing" 
+
+Fix potential zip-slip when unzipping folders from mods
+
+"" in translation files is treated as empty string
+
+conquering CS and destroying their civ should move us to -120 influence with them - relevant if someone revives them
+
+Read the first entry of translation files that start with a UTF-8 byte order mark - By SwastikTripathi
+
+Many minor Civ V discrepancies - By Qualia-Li
+
+captureOrconvertToWorker movement bugfix - By O-spin
+
+## 5.0.2
+
+Background work on unit actions :)
+
+Fix crash when two autosaves overlap - By ibrahim-iqbal
+
+Reject online saves whose game speed is missing locally - By mvanhorn
+
+Show damaged city's healthbar when it's out of sight - By Qualia-Li
+
+Wrap map descriptions within the new-game options column - By Qualia-Li
+
+Use religion display name instead of name in notification - By unciv-loof
+
+Refresh owned tile images when the owner's era or style changes - By SwastikTripathi (new contributor!)
+
+## 5.0.1
+
+Avoid ANR when opening empire overview screen from top bar
+
+Add counterintelligence modifier uniques - By SeventhM
+
+Naval AI: path to water attack stations instead of city centers - By DavidZal
+
+By ibrahim-iqbal:
+- Add the battle notification templates where only the city lost HP 
+- Charge "Costs [amount] [stat] per turn" for improvements that are not roads 
+- Fix divide by zero in the trades overview when the viewer is the first civ 
+
+Seed the browser font fixture on the game origin - By YosefLm
+
+By SomeTroglodyte:
+- Language UI shows native names, fix off-by-two in completion percentages
+- Web version: Fix broken quoted parameters in dev console
+- Web version: Suppress double handling of Ctrl-keys by game and browser
+- Prettify web port a bit
+
+## 5.0.0
+
+Web version of Unciv! - By YosefLm
+
+skip "player ready" screen for hotseat when changing options
+
+Automated Settlers can think a tile is good but it's actually unsettleable, if so, explore for a different tile
+
+By mvanhorn:
+- Keep marble wonder production bonuses local to the owning city 
+- Prevent carrier healing moves from failing during payload placement 
+
+Research agreement trade is only valid while the offerer can pay - By Qualia-Li
+
+New CS bullying uniques for BNW's Gunboat Diplomacy - By HungLTL
+
+Do not match "in cities following our religion" when neither side has a religion - By ibrahim-iqbal
+
+## 4.22.19
+
+Preparations for web version :)
+
+By ibrahim-iqbal: 
+- Add an "Off" label for the automatic promotions setting 
+
+By Qualia-Li:
+- Fix loading screenshots darkening the map between turns 
+- Exclude foreign ships from AI naval defence counts 
+- Resolve reachable movement when approaching enemy cities 
+
+Fix GreatPerson quest completion conditions - By TinyClayMan
+
+## 4.22.18
+
+CPU performance improvements
+
+Avoid ANRs in edgecases
+
+Coastal oil placed regularly
+
+Civ-specific tile filters work in console
+
+Construction queue: MaxNumberBuildable counting and thread-safe queue access - By JoshKirk800
+
+"Estimated time until turn" improvements - By unciv-loof  
+
+Translate the Natural Wonder bonus notification - By ibrahim-iqbal
+
+New Hostile Takeover unit unique - By HungLTL
+
+## 4.22.17
+
+Reduced memory when downloading games from multiplayer server
+
+Nuke targets are scrollable, so too many targets don't make the "nuke" button go off-screen
+
+Citybutton clicks show units again
+
+Added search for saved games
+
+Many small LLM fixes - By JoshKirk800 (new contributor!)
+
+Clarify nuclear death exclusions for combat uniques - By mvanhorn
+
+Harden minimap for empty explored region - By SomeTroglodyte
+
+Fix "Off" promotion-automation option being untranslatable - By ibrahim-iqbal
+
+## 4.22.16
+
+Multiple "automate promotions" options - "for automated units". "for all units", "for no units"
+
+Rendering performance improvements
+
+Show available specialist slots in building list - By neolabs120-mobile
+
+Sort pending trades by turn order - By unciv-loof
+
+Keep Civilopedia entry names visible when selecting entries - By Kilo-cy
+
+## 4.22.15
+
+Performance improvements on map refresh
+
+Change alternativeRendering to default to true for Mali-G68 GPUs
+
+Adjust thresholds for modifier colors in diplomacy screen - By unciv-loof
+
+Auto-choose unit promotions for player units - By DavidZal (new contributor!)
+
+By SomeTroglodyte:
+- Civilopedia navigation history
+- Add a button to help finding those cities missing a required building
+- Avoid overlay toggle buttons pushing TileInfoTable up above the Minimap top edge
+
+By ibrahim-iqbal:
+- Fix Citadel attack notification missing the minus on damage
+- Fix "new categories" result not being translated
+
+
 ## 4.22.14
 
 Fixed black flash when changing screens

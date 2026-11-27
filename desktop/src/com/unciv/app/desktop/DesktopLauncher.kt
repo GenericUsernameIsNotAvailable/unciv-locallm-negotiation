@@ -1,4 +1,4 @@
-﻿package com.unciv.app.desktop
+package com.unciv.app.desktop
 
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import com.badlogic.gdx.files.FileHandle
@@ -159,4 +159,3 @@ internal object DesktopLauncher {
         } catch (_: Throwable) { }
     }
 }
-

@@ -48,6 +48,9 @@ object UnitAutomation {
 
     private const val CLOSE_ENEMY_TILES_AWAY_LIMIT = 5
     private const val CLOSE_ENEMY_TURNS_AWAY_LIMIT = 3f
+    /** Naval units chase farther — ocean engagements are not within 5 tiles. */
+    private const val CLOSE_ENEMY_TILES_AWAY_LIMIT_NAVAL = 25
+    private const val CLOSE_ENEMY_TURNS_AWAY_LIMIT_NAVAL = 12f
 
 
     fun automateUnitMoves(unitView: MapUnitView, cache: AutomationCache = AutomationCache()):Unit = timeThis("automateUnitMoves") {
@@ -107,7 +110,7 @@ object UnitAutomation {
         if (tryHeadTowardsOurSiegedCity(unitView)) return
 
         // if a embarked melee unit can land and attack next turn, do not attack from water.
-        if (BattleHelper.tryDisembarkUnitToAttackPosition(unit)) return
+        if (BattleHelper.tryDisembarkUnitToAttackPosition(unitView)) return
 
         // if there is an attackable unit in the vicinity, attack!
         if (tryAttacking(unitView, cache)) return
@@ -225,7 +228,7 @@ object UnitAutomation {
         val civ = unitView.civ()
         return unitView.canMoveTo(tile)
                 && tile.getOwner() == null
-                && tile.getVisibleNeighbors().all { it.getOwner() == null }
+                && tile.getNeighbors().all { it.getOwner() == null }
                 && civ.hasExplored(tile)
                 && tile.getExploredTilesInDistance(2).any { it.getOwner() == civ }
                 && unitView.getDamageFromTerrain(tile) <= 0
@@ -341,7 +344,7 @@ object UnitAutomation {
                 if (unitView.canSwapTo(retreatTile)) {
                     unitView.tryHeadTowards(retreatTile) // we need to move through the intermediate tiles
                     // if nothing changed
-                    if (unitView.getTile().getVisibleNeighbors().contains(otherUnit.getTile()) && unitView.canSwapTo(retreatTile)) {
+                    if (unitView.getTile().getNeighbors().contains(otherUnit.getTile()) && unitView.canSwapTo(retreatTile)) {
                         unitView.trySwapMoveToTile(retreatTile)
                     }
                     return true
@@ -479,11 +482,13 @@ object UnitAutomation {
     private fun tryAdvanceTowardsCloseEnemy(unitView: MapUnitView): Boolean {
         val unit = unitView.getUnit()
         // this can be sped up if we check each layer separately
+        val tileLimit = if (unit.baseUnit.isWaterUnit) CLOSE_ENEMY_TILES_AWAY_LIMIT_NAVAL else CLOSE_ENEMY_TILES_AWAY_LIMIT
+        val turnLimit = if (unit.baseUnit.isWaterUnit) CLOSE_ENEMY_TURNS_AWAY_LIMIT_NAVAL else CLOSE_ENEMY_TURNS_AWAY_LIMIT
         val unitDistanceToTiles = unit.movement.getMovementToTilesAtPosition(
                 unit.getTile().position,
-                unit.getMaxMovement() * CLOSE_ENEMY_TURNS_AWAY_LIMIT
+                unit.getMaxMovement() * turnLimit
         )
-        val closeEnemy = TargetHelper.getAttackableEnemies(unit, unitDistanceToTiles, tilesToCheck = unit.getTile().getTilesInDistance(CLOSE_ENEMY_TILES_AWAY_LIMIT).toList())
+        val closeEnemy = TargetHelper.getAttackableEnemies(unit, unitDistanceToTiles, tilesToCheck = unit.getTile().getTilesInDistance(tileLimit).toList())
             .filterNot { unitView.getBaseUnit().isRanged() && it.tileToAttack.isCityCenter() && it.tileToAttack.getCity()!!.health == 1 } // occurs fairly often probably because AI dumb
             .filter { unit.getDamageFromTerrain(it.tileToAttackFrom) <= 0 }  // Don't attack from a mountain or near enemy citadels
             .filter {
@@ -614,16 +619,16 @@ object UnitAutomation {
             capturedCities = capturedCities.filterNot { it.health == 1 }
 
         val closestReachableCapturedCity = capturedCities
-                .map { it.getCenterTile() }
-                .sortedBy { it.aerialDistanceTo(unit.getTile()) }
-                .firstOrNull { unit.movement.canReach(it) }
+                .map { unitView.getTile().getTileMap().getTile(it.getCenterTile()) } // Temporary bridge until this function uses views
+                .sortedBy { it.aerialDistanceTo(unitView.getTile()) }
+                .firstOrNull { unitView.canReach(it) }
 
         if (closestReachableCapturedCity != null) {
             return HeadTowardsEnemyCityAutomation.headTowardsEnemyCity(
                 unitView,
                 closestReachableCapturedCity,
                 // This should be cached after the `canReach` call above.
-                unit.movement.getShortestPath(closestReachableCapturedCity)
+                unitView.getShortestPath(closestReachableCapturedCity)
             )
         }
         return false

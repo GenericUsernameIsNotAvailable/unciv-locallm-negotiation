@@ -1,10 +1,12 @@
 package com.unciv.logic.automation.civilization
 
+import com.unciv.models.metadata.GameSettings
 import com.unciv.view.isAirUnit
 import com.unciv.view.isCivilian
 import com.unciv.view.isMilitary
 import com.unciv.view.isNuclearWeapon
 import com.unciv.view.isAtWar
+import com.unciv.view.stateBasedRandom
 import com.unciv.UncivGame
 import com.unciv.logic.automation.Automation
 import com.unciv.logic.automation.ThreatLevel
@@ -245,8 +247,8 @@ object NextTurnAutomation {
         for (state in civInfo.getKnownCivs().filter { !it.isDefeated() && it.isCityState }.toList()) {
             val diplomacyManager = state.getDiplomacyManager(civInfo)!!
             if (!diplomacyManager.isRelationshipLevelLT(RelationshipLevel.Friend)) continue
-            if (civInfo.gameInfo.negotiation.forbidsBullyingCityState(civInfo, state)) continue
             if (diplomacyManager.diplomaticStatus != DiplomaticStatus.Peace) continue
+            if (civInfo.gameInfo.negotiation.forbidsBullyingCityState(civInfo, state)) continue
             if (valueCityStateAlliance(civView, state) > 0) continue
             if (state.cityStateFunctions.getTributeWillingness(civInfo) < 0) continue
             if (state.cityStateFunctions.getTributeWillingness(civInfo, demandingWorker = true) > 0)
@@ -278,7 +280,9 @@ object NextTurnAutomation {
                 // Ignore rows where all techs have 0 weight
                 it.any { it.getWeightForAiDecision(stateForConditionals) > 0 }
             } ?: costs.last()
-            val chosenTech = mostExpensiveTechs.randomWeighted(rng) { it.getWeightForAiDecision(stateForConditionals) }
+            val chosenTech = mostExpensiveTechs.randomWeighted(rng) {
+                it.getWeightForAiDecision(stateForConditionals) * civInfo.gameInfo.negotiation.strategicTechMultiplier(civInfo, it)
+            }
             civInfo.tech.getFreeTechnology(chosenTech.name)
         }
         if (civInfo.tech.techsToResearch.isEmpty()) {
@@ -295,7 +299,7 @@ object NextTurnAutomation {
                         it.getWeightForAiDecision(stateForConditionals) * civInfo.gameInfo.negotiation.strategicTechMultiplier(civInfo, it)
                     }
                 } else {
-                    //Choose randomly between cheapest and second cheapest group, weighted by StrategicAiDirector posture
+                    //Choose randomly between cheapest and second cheapest group
                     val techsAdvanced = costs[1]
                     (cheapestTechs + techsAdvanced).randomWeighted(rng) {
                         it.getWeightForAiDecision(stateForConditionals) * civInfo.gameInfo.negotiation.strategicTechMultiplier(civInfo, it)
@@ -474,28 +478,22 @@ object NextTurnAutomation {
     }
 
     internal fun applyPromotions(unitView: MapUnitView) {
-        val unit = unitView.getUnit()
-        // Restrict Human automated units from promotions via setting
-        if (!unit.civ.isAI() && !UncivGame.Current.settings.automatedUnitsChoosePromotions) return
-        val rng = unit.cache.state.stateBasedRandom("NextTurnAutomation.automateUnits")
-        val stateForConditionals = unit.cache.state
+        // Humans only auto-promote when the setting is not Off (AI always does)
+        if (unitView.civ().isHuman() && UncivGame.Current.settings.automaticPromotions == GameSettings.AutomaticPromotions.Off) return
+        val rng = unitView.stateBasedRandom("NextTurnAutomation.automateUnits")
         while (unitView.canBePromoted()) {
-            val promotions = unit.promotions.getAvailablePromotions()
+            val promotions = unitView.getAvailablePromotions().filter { it.isAvailable }
             val availablePromotions = if (unitView.unitHealth <= 60
-                && promotions.any { it.hasUnique(UniqueType.OneTimeUnitHeal) }
+                && promotions.any { it.promotion.hasUnique(UniqueType.OneTimeUnitHeal) }
                 && !(unitView.isAirUnit() || unitView.hasUnique(UniqueType.CanMoveAfterAttacking))
             ) {
-                promotions.filter { it.hasUnique(UniqueType.OneTimeUnitHeal) }
-            } else promotions.filterNot { it.hasUnique(UniqueType.SkipPromotion) }
+                promotions.filter { it.promotion.hasUnique(UniqueType.OneTimeUnitHeal) }
+            } else promotions.filterNot { it.promotion.hasUnique(UniqueType.SkipPromotion) }
 
-            if (availablePromotions.none()) break
-            val freePromotions = availablePromotions.filter { it.hasUnique(UniqueType.FreePromotion) }.toList()
-            val chosenPromotion =
-                if (freePromotions.isNotEmpty()) freePromotions.randomWeighted(rng) {
-                    it.getWeightForAiDecision(stateForConditionals)
-                }
-                else availablePromotions.toList()
-                    .randomWeighted(rng) { it.getWeightForAiDecision(stateForConditionals) }
+            if (availablePromotions.isEmpty()) break
+            val freePromotions = availablePromotions.filter { it.promotion.hasUnique(UniqueType.FreePromotion) }
+            val chosenPromotion = freePromotions.ifEmpty { availablePromotions }
+                .randomWeighted(rng) { it.aiWeight }.promotion
             unitView.tryAddPromotion(chosenPromotion.name)
         }
     }
@@ -579,22 +577,21 @@ object NextTurnAutomation {
 
     /** Returns the priority of the unit, a lower value is higher priority **/
     fun getUnitPriority(unit: MapUnitView, isAtWar: Boolean, cache: AutomationCache): Int {
-        val mapUnit = unit.getUnit()
         if (unit.hasUnique(UniqueType.SpaceshipPart)) return 0 // Move before everything else so we can swap
         if (unit.isCivilian() && unit.hasUnique(UniqueType.FoundCity)) return 1// Settlers before workers
-        if (unit.isCivilian() && !mapUnit.isGreatPersonOfType("War")) return 2 // Civilian
+        if (unit.isCivilian() && !unit.getBaseUnit().isGreatPersonOfType("War")) return 2 // Civilian
         if (unit.isAirUnit()) return when {
-            mapUnit.canIntercept() -> 2 // Fighers first
+            unit.canIntercept() -> 2 // Fighers first
             unit.isNuclearWeapon() -> 3 // Then Nukes (area damage)
             !unit.hasUnique(UniqueType.SelfDestructs) -> 4 // Then Bombers (reusable)
             else -> 5 // Missiles
         }
         val distance = if (!isAtWar) 0 else ThreatManager.getDistanceToClosestEnemyUnit(unit.civ(), cache, unit.getTile(), 6)
         // Lower health units should move earlier to swap with higher health units
-        return distance + (unit.unitHealth / 10) - mapUnit.promotions.numberOfPromotions + when {
+        return distance + (unit.unitHealth / 10) - unit.numberOfPromotions + when {
             unit.getBaseUnit().isRanged() -> 10
             unit.getBaseUnit().isMelee() -> 30
-            mapUnit.isGreatPersonOfType("War") -> 100 // Generals move after military units
+            unit.getBaseUnit().isGreatPersonOfType("War") -> 100 // Generals move after military units
             else -> 1
         }
     }

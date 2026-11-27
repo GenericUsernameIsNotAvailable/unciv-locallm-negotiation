@@ -100,8 +100,9 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
             key = key.mix(detailedCityView.getFoodStored()).mix(detailedCityView.getFoodToNextPopulation())
                 .mix(detailedCityView.foodForNextTurn())
             val constructions = detailedCityView.constructions
-            key = key.mix(constructions.currentConstructionName())
-            val construction = constructions.getCurrentConstruction()
+            val currentName = constructions.currentConstructionName() // Once: the queue can change between two reads
+            key = key.mix(currentName)
+            val construction = constructions.getConstruction(currentName)
             if (construction is INonPerpetualConstruction)
                 key = key.mix(constructions.getWorkDone(construction.name))
                     .mix(detailedCityView.getConstructionProductionCost(construction))
@@ -158,7 +159,8 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
         pack()
 
         // If city damaged - add health bar
-        if (isCityViewable && foreignCityView.getHealth() < foreignCityView.getMaxHealth().toFloat()) {
+        // As in Civ V, a known city shows its damage whether or not it is in sight
+        if (foreignCityView.getHealth() < foreignCityView.getMaxHealth().toFloat()) {
             val healthBar = ImageGetter.getHealthBar(foreignCityView.getHealth().toFloat(),
                 foreignCityView.getMaxHealth().toFloat(), 100f, 3f)
             addActor(healthBar)
@@ -184,7 +186,7 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
         if (!isButtonMoved && (tileGroup.tileView.civilianUnit != null))
             insertHiddenUnitMarker(HiddenUnitMarkerPosition.Center)
 
-        for (neighbor in tileGroup.tileView.getVisibleNeighbors()) {
+        for (neighbor in tileGroup.neighbors) {
             val direction = tileGroup.tileView.position().minus(neighbor.position())
 
             if (isButtonMoved) {
@@ -246,7 +248,7 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
             // Foreign cities with a spy should offer both diplomacy and inspection.
             val openCityDirectly = belongsToViewingCiv() || viewingPlayer.isSpectator || DebugUtils.VISIBLE_MAP
             if (cityView != null && !isIteratingAirUnits && openCityDirectly) {
-                GUI.pushScreen{ CityScreen(cityView) }
+                GUI.pushScreen { CityScreen(cityView) }
             }
             else if (foreignCityView.isKnownTo(viewingPlayer))
                 foreignCityInfoPopup()
@@ -300,7 +302,7 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
     }
 
     private fun foreignCityInfoPopup() {
-        fun openDiplomacy() = GUI.pushScreen{ 
+        fun openDiplomacy() = GUI.pushScreen {
             DiplomacyScreen(foreignCityView.gameView.civView, foreignCityView.owningCiv())
         }
 
@@ -317,7 +319,7 @@ class CityButton(val foreignCityView: ForeignCityView, private val tileGroup: Ti
             if (foreignCityView.isReligionEnabled())
                 add(CityReligionInfoTable(foreignCityView, true)).colspan(3).row()
             addOKButton("Diplomacy") { openDiplomacy() }
-            if (espionageCityView != null) addButton("View") { GUI.pushScreen{
+            if (espionageCityView != null) addButton("View") { GUI.pushScreen {
                 CityScreen(espionageCityView)
             } }
             add().expandX()
