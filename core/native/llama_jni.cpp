@@ -154,7 +154,7 @@ Java_com_unciv_logic_commitments_llm_JniLlamaCppBridge_nativeGenerate(
 
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.12f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(vocab), 64, 1.12f, 0.0f, 0.0f));
     if (temperature <= 0.05f) {
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
     } else {
